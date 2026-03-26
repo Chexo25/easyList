@@ -1,4 +1,7 @@
-import { Store } from '@tauri-apps/plugin-store';
+import { LazyStore } from '@tauri-apps/plugin-store';
+
+const isBrowser = typeof window !== 'undefined';
+const isTauriEnv = isBrowser && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 export interface Ingredient {
   id: string;
@@ -24,20 +27,38 @@ export interface Meal {
   name: string;
   ingredients: MealIngredient[];
   createdAt: number;
+  isFavorite?: boolean;
+  type?: string; // 'Entrée', 'Plat', 'Dessert', 'Goûter', etc.
 }
 
 // Create stores
-export const store = new Store('ingredients.bin');
-export const mealStore = new Store('meals.bin');
+export const store = new LazyStore('ingredients.bin');
+export const mealStore = new LazyStore('meals.bin');
 
 export async function getIngredients(): Promise<Ingredient[]> {
-  const ingredients = await store.get<Ingredient[]>('ingredients');
-  return ingredients || [];
+  if (!isTauriEnv && isBrowser) {
+    const data = localStorage.getItem('ingredients.bin');
+    return data ? JSON.parse(data) : [];
+  }
+  try {
+    const ingredients = await store.get<Ingredient[]>('ingredients');
+    return ingredients || [];
+  } catch (e) {
+    return [];
+  }
 }
 
 export async function saveIngredients(ingredients: Ingredient[]) {
-  await store.set('ingredients', ingredients);
-  await store.save(); // Save to disk
+  if (!isTauriEnv && isBrowser) {
+    localStorage.setItem('ingredients.bin', JSON.stringify(ingredients));
+    return;
+  }
+  try {
+    await store.set('ingredients', ingredients);
+    await store.save(); // Save to disk
+  } catch (e) {
+    console.error("Failed to save ingredients to Tauri:", e);
+  }
 }
 
 export async function addIngredient(ingredient: Ingredient) {
@@ -62,13 +83,29 @@ export async function removeIngredient(id: string) {
 }
 
 export async function getMeals(): Promise<Meal[]> {
-  const meals = await mealStore.get<Meal[]>('meals');
-  return meals || [];
+  if (!isTauriEnv && isBrowser) {
+    const data = localStorage.getItem('meals.bin');
+    return data ? JSON.parse(data) : [];
+  }
+  try {
+    const meals = await mealStore.get<Meal[]>('meals');
+    return meals || [];
+  } catch (e) {
+    return [];
+  }
 }
 
 export async function saveMeals(meals: Meal[]) {
-  await mealStore.set('meals', meals);
-  await mealStore.save();
+  if (!isTauriEnv && isBrowser) {
+    localStorage.setItem('meals.bin', JSON.stringify(meals));
+    return;
+  }
+  try {
+    await mealStore.set('meals', meals);
+    await mealStore.save();
+  } catch (e) {
+    console.error("Failed to save meals to Tauri:", e);
+  }
 }
 
 export async function addMeal(meal: Meal) {

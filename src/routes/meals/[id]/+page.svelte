@@ -19,10 +19,15 @@
   let addUnit = $state('');
 
   onMount(async () => {
-    const meals = await Store.getMeals();
-    meal = meals.find(m => m.id === mealId) || null;
-    if (!meal) {
-      goto('/meals');
+    try {
+      const meals = await Store.getMeals();
+      meal = meals.find(m => m.id === mealId) || null;
+      if (!meal) {
+        goto('/meals');
+      }
+    } catch (err) {
+      console.warn('Error loading meal:', err);
+      goto('/meals'); // Fallback in case the store fails
     }
   });
 
@@ -30,10 +35,13 @@
     e.preventDefault();
     if (!meal || !addName.trim()) return;
 
+    const ingredientName = addName.trim();
+    const ingredientCategory = addCategory.trim() || 'Divers';
+
     const newIng: MealIngredient = {
       id: uuidv4(),
-      name: addName.trim(),
-      category: addCategory.trim() || 'Divers',
+      name: ingredientName,
+      category: ingredientCategory,
       quantity: addQty,
       unit: addUnit.trim()
     };
@@ -42,6 +50,21 @@
     
     // Save
     await Store.updateMeal(meal.id, { ingredients: meal.ingredients });
+
+    // Ensure ingredient exists in global catalogue
+    const allIngredients = await Store.getIngredients();
+    const existing = allIngredients.find(i => i.name.toLowerCase() === ingredientName.toLowerCase());
+    
+    if (!existing) {
+      // Add entirely new ingredient to the catalogue
+      await Store.addIngredient({
+        id: uuidv4(),
+        name: ingredientName,
+        category: ingredientCategory,
+        isBought: true, // Prevent it from appearing in the active shopping list
+        createdAt: Date.now()
+      });
+    }
     
     // Reset fields
     addName = '';
@@ -135,5 +158,12 @@
       </div>
     </form>
   </footer>
+</div>
+{:else}
+<div class="flex items-center justify-center h-[100dvh] text-muted-foreground">
+  <div class="flex flex-col items-center gap-2">
+    <div class="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+    <p>Chargement du repas...</p>
+  </div>
 </div>
 {/if}
