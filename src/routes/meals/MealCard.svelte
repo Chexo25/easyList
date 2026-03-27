@@ -28,6 +28,18 @@
   let editCategory = $state('');
   let editQty = $state<number | undefined>();
   let editUnit = $state('');
+  let showEditCategorySuggestions = $state(false);
+
+  let filteredEditCategories = $derived(
+    editCategory.trim() 
+      ? defaultCategories.filter(c => c.toLowerCase().includes(editCategory.toLowerCase()))
+      : defaultCategories
+  );
+
+  function selectEditCategory(cat: string) {
+    editCategory = cat;
+    showEditCategorySuggestions = false;
+  }
 
   function openEdit(ing: MealIngredient) {
     editingIngredient = ing;
@@ -359,9 +371,35 @@
       <Dialog.Title>Modifier {editingIngredient?.name}</Dialog.Title>
     </Dialog.Header>
     <div class="space-y-4 pt-4">
-      <div class="space-y-2">
+      <div class="space-y-2 relative">
         <Label>Rayon / Catégorie</Label>
-        <Input bind:value={editCategory} placeholder="Ex: Fruits & Légumes" />
+        <Input 
+          bind:value={editCategory} 
+          placeholder="Ex: Fruits & Légumes" 
+          onfocus={() => showEditCategorySuggestions = true}
+          onblur={() => setTimeout(() => showEditCategorySuggestions = false, 200)}
+          autocomplete="off"
+        />
+        {#if showEditCategorySuggestions}
+          <div class="absolute left-0 right-0 top-[60px] bg-card border rounded-xl shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
+            {#if filteredEditCategories.length === 0}
+              <div class="px-3 py-2 text-sm text-muted-foreground text-center">Nouveau rayon...</div>
+            {:else}
+              {#each filteredEditCategories as cat}
+                <button 
+                  type="button" 
+                  class="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors text-sm border-b border-border/50 last:border-0 flex items-center justify-between" 
+                  onclick={() => selectEditCategory(cat)}
+                >
+                  {cat}
+                  {#if cat === editCategory}
+                    <Check class="w-3.5 h-3.5 text-primary" />
+                  {/if}
+                </button>
+              {/each}
+            {/if}
+          </div>
+        {/if}
       </div>
       <div class="flex gap-2">
         <div class="flex-1 space-y-2">

@@ -104,7 +104,7 @@
 
 </script>
 
-<div class="flex flex-col h-[100dvh]">
+<div class="flex flex-col h-full min-h-0">
   <header class="sticky top-0 z-20 bg-background/95 backdrop-blur border-b shadow-sm pb-4">
     <div class="px-4 py-4">
       <h1 class="text-xl font-bold tracking-tight text-center">Mes Repas</h1>

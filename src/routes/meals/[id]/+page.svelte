@@ -82,7 +82,7 @@
 </script>
 
 {#if meal}
-<div class="flex flex-col h-[100dvh]">
+<div class="flex flex-col h-full min-h-0">
   <header class="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-4 shrink-0 shadow-sm flex items-center gap-3">
     <a href="/meals" class="p-2 -ml-2 text-muted-foreground hover:text-foreground">
       <ArrowLeft class="w-5 h-5" />
@@ -160,7 +160,7 @@
   </footer>
 </div>
 {:else}
-<div class="flex items-center justify-center h-[100dvh] text-muted-foreground">
+<div class="flex items-center justify-center h-full min-h-[50dvh] text-muted-foreground">
   <div class="flex flex-col items-center gap-2">
     <div class="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
     <p>Chargement du repas...</p>
