@@ -191,9 +191,9 @@ html, body {
 }
 
 @utility no-scrollbar {
-	-ms-overflow-style: none;
-	scrollbar-width: none;
+	-ms-overflow-style: none;
+	scrollbar-width: none;
 	&::-webkit-scrollbar {
-		display: none;
+		display: none;
 	}
 }

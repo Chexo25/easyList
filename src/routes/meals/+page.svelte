@@ -79,8 +79,7 @@
         let boughtIndex = toSave.findIndex(i => i.name.toLowerCase() === ming.name.toLowerCase() && i.isBought);
         if (boughtIndex !== -1) {
           let exist = toSave[boughtIndex];
-          let linked = exist.linkedMeals || [];
-          if (!linked.includes(meal.name)) linked.push(meal.name);
+          let linked = [meal.name]; // Reset the meal links for this new shop session
           toSave[boughtIndex] = { ...exist, isBought: false, quantity: ming.quantity || 1, linkedMeals: linked, category: ming.category, unit: ming.unit || exist.unit };
         } else {
           // Add totally new

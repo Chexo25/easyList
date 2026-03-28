@@ -8,7 +8,7 @@
   import * as Dialog from '$lib/components/ui/dialog';
   import { Trash2, Plus, ShoppingCart, ChevronDown, ChevronUp, Check, Star, Pencil } from 'lucide-svelte';
   import { categories as defaultCategories } from '$lib/categories';
-  import { searchProductsOFF, type OFFProduct } from '$lib/openFoodFacts';
+  import { searchLocalProducts, type Product as OFFProduct } from '$lib/productsDb';
 
   let { meal = $bindable(), onDelete, onAddToCart } = $props<{
     meal: Meal;
@@ -87,7 +87,7 @@
     // Instead of resolving immediately, we debounce properly and return a cleanup function
     const searchTimeout = setTimeout(async () => {
       isLoadingApi = true;
-      const res = await searchProductsOFF(q);
+        const res = await searchLocalProducts(q);
       // Only update if input hasn't changed drastically
       if (addName.trim() === q) {
         apiProducts = res;

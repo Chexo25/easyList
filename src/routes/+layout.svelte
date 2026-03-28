@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { ShoppingCart, Utensils } from 'lucide-svelte';
+  import { ShoppingCart, Utensils, CalendarDays } from 'lucide-svelte';
   import { page } from '$app/state';
   let { children } = $props();
 </script>
@@ -20,6 +20,10 @@
       <a href="/meals" class="flex flex-col items-center justify-center flex-1 h-full gap-1 pt-1 {page.url.pathname.startsWith('/meals') ? 'text-primary' : 'text-muted-foreground'}">
         <Utensils class="w-5 h-5" />
         <span class="text-[10px] font-medium">Repas</span>
+      </a>
+      <a href="/planning" class="flex flex-col items-center justify-center flex-1 h-full gap-1 pt-1 {page.url.pathname.startsWith('/planning') ? 'text-primary' : 'text-muted-foreground'}">
+        <CalendarDays class="w-5 h-5" />
+        <span class="text-[10px] font-medium">Planning</span>
       </a>
     </nav>
   </main>

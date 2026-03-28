@@ -31,9 +31,20 @@ export interface Meal {
   type?: string; // 'Entrée', 'Plat', 'Dessert', 'Goûter', etc.
 }
 
+export interface PlannedDay {
+  date: string; // YYYY-MM-DD
+  lunch: string | null; // Meal ID or null
+  dinner: string | null; // Meal ID or null
+  lunchExcluded?: string[];
+  dinnerExcluded?: string[];
+}
+
+export type Planning = Record<string, PlannedDay>;
+
 // Create stores
 export const store = new LazyStore('ingredients.bin');
 export const mealStore = new LazyStore('meals.bin');
+export const planStore = new LazyStore('planning.bin');
 
 export async function getIngredients(): Promise<Ingredient[]> {
   if (!isTauriEnv && isBrowser) {
@@ -129,3 +140,37 @@ export async function removeMeal(id: string) {
   await saveMeals(filtered);
 }
 
+export async function getPlanning(): Promise<Planning> {
+  if (!isTauriEnv && isBrowser) {
+    const data = localStorage.getItem('planning.bin');
+    return data ? JSON.parse(data) : {};
+  }
+  try {
+    const planning = await planStore.get<Planning>('planning');
+    return planning || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+export async function savePlanning(planning: Planning) {
+  if (!isTauriEnv && isBrowser) {
+    localStorage.setItem('planning.bin', JSON.stringify(planning));
+    return;
+  }
+  try {
+    await planStore.set('planning', planning);
+    await planStore.save();
+  } catch (e) {
+    console.error("Failed to save planning to Tauri:", e);
+  }
+}
+
+export async function updatePlannedDay(date: string, updates: Partial<PlannedDay>) {
+  const current = await getPlanning();
+  if (!current[date]) {
+    current[date] = { date, lunch: null, dinner: null };
+  }
+  current[date] = { ...current[date], ...updates };
+  await savePlanning(current);
+}

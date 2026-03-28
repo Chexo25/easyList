@@ -11,7 +11,7 @@
   import * as Dialog from '$lib/components/ui/dialog';
   import { ArrowUp, Trash2, Info, Plus, ChevronDown, Utensils, Check, Pencil } from 'lucide-svelte';
   import { categories as defaultCategories } from '$lib/categories';
-  import { searchProductsOFF, type OFFProduct } from '$lib/openFoodFacts';
+  import { searchLocalProducts, type Product as OFFProduct } from '$lib/productsDb';
 
   let ingredients = $state<Ingredient[]>([]);
   let meals = $state<Meal[]>([]);
@@ -62,7 +62,7 @@
     // Instead of resolving immediately, we debounce properly and return a cleanup function
     const searchTimeout = setTimeout(async () => {
       isLoadingApi = true;
-      const res = await searchProductsOFF(q);
+        const res = await searchLocalProducts(q);
       // Only inject results if the field still matches the query (prevents late overwrite artifacts)
       if (addName.trim() === q) {
         apiProducts = res;
@@ -196,12 +196,14 @@
         ingredients[boughtIndex].isBought = false;
         ingredients[boughtIndex].quantity = addQty || 1;
         ingredients[boughtIndex].category = finalCategory;
+        ingredients[boughtIndex].linkedMeals = [];
         if (addUnit.trim()) ingredients[boughtIndex].unit = addUnit.trim();
         await Store.updateIngredient(ingredients[boughtIndex].id, {
           isBought: false,
           quantity: addQty || 1,
           category: finalCategory,
-          unit: ingredients[boughtIndex].unit
+          unit: ingredients[boughtIndex].unit,
+          linkedMeals: []
         });
       } else {
         // Create new
