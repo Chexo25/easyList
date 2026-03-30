@@ -21,7 +21,7 @@
 
   let filterFavoriteOnly = $state(false);
   let filterType = $state('Tous');
-  const catOptions = ['Tous', 'Entrée', 'Plat', 'Dessert', 'Goûter'];
+  const catOptions = ['Tous', 'Entrée', 'Plat', 'Plat à emporter', 'Dessert', 'Goûter'];
 
   let displayedMeals = $derived(
     meals.filter(m => {

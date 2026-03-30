@@ -16,7 +16,7 @@
     onAddToCart: (meal: Meal) => void;
   }>();
 
-  const typeOptions = ['Entrée', 'Plat', 'Dessert', 'Goûter'];
+  const typeOptions = ['Entrée', 'Plat', 'Plat à emporter', 'Dessert', 'Goûter'];
 
   let addName = $state('');
   let addCategory = $state('');
