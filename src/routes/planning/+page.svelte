@@ -5,12 +5,27 @@
   import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
   import * as Dialog from '$lib/components/ui/dialog';
   import * as Store from '$lib/store';
+  import { syncMeals, syncPlanning, updatePlannedDayInSync, saveItems, items as syncItems } from '$lib/shoppingSyncStore';
+  import { get } from 'svelte/store';
+  
+  
+  
   import type { Meal, PlannedDay } from '$lib/store';
   import { v4 as uuidv4 } from 'uuid';
   
   let meals: Meal[] = $state([]);
   let planning: Record<string, PlannedDay> = $state({});
-  
+
+  $effect(() => {
+    const unsubM = syncMeals.subscribe(val => {
+       meals = val.map(m => ({ ...m, isFavorite: m.is_favorite }));
+    });
+    const unsubP = syncPlanning.subscribe(val => {
+       planning = val;
+    });
+    return () => { unsubM(); unsubP(); };
+  });
+
   let activeDate = $state(new Date());
   let activeTab = $state('day');
 
@@ -49,13 +64,13 @@
   }
 
   onMount(async () => {
-    meals = await Store.getMeals();
-    planning = await Store.getPlanning();
+    
+    
   });
 
   async function updatePlan(dateStr: string, updates: Partial<PlannedDay>) {
-    await Store.updatePlannedDay(dateStr, updates);
-    planning = await Store.getPlanning(); 
+    await updatePlannedDayInSync(dateStr, updates);
+    
   }
 
   // --- SELECTION REPAS ---
@@ -132,7 +147,7 @@
   }
 
   async function confirmExport() {
-    let currentShopping = await Store.getIngredients();
+    let currentShopping = get(syncItems).map(i => ({...i, isBought: i.is_bought}));
     let toSave = [...currentShopping];
 
     for (const exp of toExport.filter(e => e.selected)) {
@@ -167,7 +182,7 @@
             }
         }
     }
-    await Store.saveIngredients(toSave);
+    await saveItems(toSave);
     exportDialogOpen = false;
     setTimeout(() => {
         alert("Les repas sélectionnés ont été ajoutés à la liste de courses !");

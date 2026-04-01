@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
   import * as Store from '$lib/store';
+  import { syncMeals, addMealToSync, updateMealInSync, deleteMealFromSync, saveItems, items as syncItems } from '$lib/shoppingSyncStore';
+  import { get } from 'svelte/store';
   import type { Meal, Ingredient } from '$lib/store';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -9,11 +11,29 @@
   import MealCard from './MealCard.svelte';
 
   let meals = $state<Meal[]>([]);
+  $effect(() => {
+    const unsub = syncMeals.subscribe(val => {
+       meals = val.map(m => ({
+          ...m,
+          isFavorite: m.is_favorite
+       }));
+    });
+    return unsub;
+  });
+  $effect(() => {
+    const unsub = syncMeals.subscribe(val => {
+       meals = val.map(m => ({
+          ...m,
+          isFavorite: m.is_favorite
+       }));
+    });
+    return unsub;
+  });
   let newMealName = $state('');
 
   onMount(async () => {
     try {
-      meals = await Store.getMeals();
+      // meals is now managed by syncMeals subscription
     } catch (err) {
       console.warn('Tauri store ready in browser?', err);
     }
@@ -46,7 +66,7 @@
     newMealName = '';
     
     try {
-      await Store.addMeal(newMeal);
+      await addMealToSync(newMeal);
     } catch(err) {
       console.warn('Could not save to Tauri:', err);
     }
@@ -54,12 +74,12 @@
 
   async function deleteMeal(id: string) {
     meals = meals.filter(m => m.id !== id);
-    await Store.removeMeal(id);
+    await deleteMealFromSync(id);
   }
 
   // Temporary function for adding a meal directly to the shopping list
   async function addMealToShopping(meal: Meal) {
-    let currentShopping = await Store.getIngredients();
+    let currentShopping = get(syncItems).map(i => ({...i, isBought: i.is_bought}));
     
     let toSave: Ingredient[] = [...currentShopping];
     
@@ -97,7 +117,7 @@
       }
     }
     
-    await Store.saveIngredients(toSave);
+    await saveItems(toSave);
     alert(`"${meal.name}" ajouté à la liste de courses !`);
   }
 

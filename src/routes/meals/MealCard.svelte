@@ -1,6 +1,7 @@
 <script lang="ts">
   import { v4 as uuidv4 } from 'uuid';
   import * as Store from '$lib/store';
+  import { updateMealInSync } from '$lib/shoppingSyncStore';
   import type { Meal, MealIngredient } from '$lib/store';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
@@ -56,7 +57,7 @@
       }
       return i;
     });
-    await Store.updateMeal(meal.id, { ingredients: meal.ingredients });
+    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
     editingIngredient = null;
   }
 
@@ -140,7 +141,7 @@
     };
 
     meal.ingredients = [...meal.ingredients, newIng];
-    await Store.updateMeal(meal.id, { ingredients: meal.ingredients });
+    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
 
     const allIngredients = await Store.getIngredients();
     const existing = allIngredients.find((i: any) => i.name.toLowerCase() === ingredientName.toLowerCase());
@@ -166,7 +167,7 @@
 
   async function removeIngredient(ingId: string) {
     meal.ingredients = meal.ingredients.filter((i: MealIngredient) => i.id !== ingId);
-    await Store.updateMeal(meal.id, { ingredients: meal.ingredients });
+    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
   }
 </script>
 
@@ -178,7 +179,7 @@
         <input 
           type="text" 
           bind:value={meal.name} 
-          onchange={() => Store.updateMeal(meal.id, { name: meal.name })} 
+          onchange={() => updateMealInSync(meal.id, { name: meal.name })} 
           class="font-bold text-lg bg-transparent border-none outline-none focus:ring-0 w-full p-0" 
         />
         <button 
@@ -198,7 +199,7 @@
       <div class="flex gap-1 shrink-0">
         <button 
           class="p-2 rounded-full transition-colors {meal.isFavorite ? 'text-yellow-500 hover:bg-yellow-500/10' : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10'}" 
-          onclick={() => { meal.isFavorite = !meal.isFavorite; Store.updateMeal(meal.id, { isFavorite: meal.isFavorite }); }}
+          onclick={() => { meal.isFavorite = !meal.isFavorite; updateMealInSync(meal.id, { isFavorite: meal.isFavorite }); }}
           title={meal.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
         >
           <Star class="w-4 h-4 {meal.isFavorite ? 'fill-current' : ''}" />
@@ -217,7 +218,7 @@
           class="text-[10px] px-2 py-0.5 rounded-md transition-colors border {meal.type === tOpt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground hover:bg-primary/20'}"
           onclick={() => { 
             meal.type = meal.type === tOpt ? undefined : tOpt; 
-            Store.updateMeal(meal.id, { type: meal.type }); 
+            updateMealInSync(meal.id, { type: meal.type }); 
           }}
         >
           {tOpt}

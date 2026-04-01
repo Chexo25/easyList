@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
   import * as Store from '$lib/store';
+  import { items as syncItems, lists, currentListId, saveItems } from '$lib/shoppingSyncStore';
+  import { supabase } from '$lib/supabase';
+  import { get } from 'svelte/store';
   import type { Ingredient, Meal } from '$lib/store';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Label } from '$lib/components/ui/label';
@@ -14,6 +17,53 @@
   import { searchLocalProducts, type Product as OFFProduct } from '$lib/productsDb';
 
   let ingredients = $state<Ingredient[]>([]);
+
+  let isOffline = $state(false);
+  let currentListName = $state("");
+  let unsubscribeLists: () => void;
+  let unsubscribeCurrentList: () => void;
+
+  $effect(() => {
+    isOffline = !navigator.onLine;
+    const handleOffline = () => isOffline = true;
+    const handleOnline = () => isOffline = false;
+    
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    unsubscribeLists = lists.subscribe(ls => {
+      const currentId = get(currentListId);
+      const list = (ls || []).find(l => l?.id === currentId);
+      currentListName = list?.name || "";
+    });
+
+    unsubscribeCurrentList = currentListId.subscribe(id => {
+      const ls = get(lists);
+      const list = (ls || []).find(l => l?.id === id);
+      currentListName = list?.name || "";
+    });
+
+    let unsubscribeItems = syncItems.subscribe(val => {
+      ingredients = val.map(v => ({
+        id: v.id,
+        name: v.name,
+        category: v.category || 'Divers',
+        isBought: v.is_bought || false,
+        createdAt: v.created_at ? new Date(v.created_at).getTime() : Date.now(),
+        quantity: v.quantity,
+        unit: v.unit || '',
+        linkedMeals: v.linked_meals || []
+      }));
+    });
+    
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+      if (unsubscribeLists) unsubscribeLists();
+      if (unsubscribeCurrentList) unsubscribeCurrentList();
+      unsubscribeItems();
+    };
+  });
   let meals = $state<Meal[]>([]);
   let addName = $state('');
   let addCategory = $state('');
@@ -40,7 +90,7 @@
       unit: editQty ? editUnit : ''
     };
     ingredients = ingredients.map(i => i.id === editingIngredient!.id ? { ...i, ...updated } : i);
-    await Store.updateIngredient(editingIngredient.id, updated);
+    await supabase.from('items').update({ ...updated }).eq('id', editingIngredient.id);
     editingIngredient = null;
   }
 
@@ -75,7 +125,6 @@
 
   onMount(async () => {
     try {
-      ingredients = await Store.getIngredients();
       meals = await Store.getMeals();
     } catch (err) {
       console.warn('Tauri store might not be ready in browser:', err);
@@ -161,7 +210,7 @@
         }
       }
     }
-    await Store.saveIngredients(ingredients);
+    await saveItems(ingredients);
     addName = '';
     showSuggestions = false;
     alert(`"${meal.name}" ajouté à la liste de courses !`);
@@ -184,11 +233,11 @@
       // Also update the category in case they changed it
       ingredients[existingIndex].category = finalCategory;
       if (addUnit.trim()) ingredients[existingIndex].unit = addUnit.trim();
-      await Store.updateIngredient(ingredients[existingIndex].id, { 
+      await supabase.from('items').update({ 
         quantity: q1 + q2, 
         category: finalCategory,
         unit: ingredients[existingIndex].unit
-      });
+      }).eq('id', ingredients[existingIndex].id);
     } else {
       // Existing BOUGHT ingredient?
       const boughtIndex = ingredients.findIndex(i => i.name.toLowerCase() === ingredientName.toLowerCase() && i.isBought);
@@ -198,13 +247,13 @@
         ingredients[boughtIndex].category = finalCategory;
         ingredients[boughtIndex].linkedMeals = [];
         if (addUnit.trim()) ingredients[boughtIndex].unit = addUnit.trim();
-        await Store.updateIngredient(ingredients[boughtIndex].id, {
-          isBought: false,
+        await supabase.from('items').update({
+          is_bought: false,
           quantity: addQty || 1,
           category: finalCategory,
           unit: ingredients[boughtIndex].unit,
-          linkedMeals: []
-        });
+          linked_meals: []
+        }).eq('id', ingredients[boughtIndex].id);
       } else {
         // Create new
         const newIng: Ingredient = {
@@ -217,7 +266,20 @@
           unit: addUnit.trim()
         };
         ingredients = [...ingredients, newIng];
-        await Store.addIngredient(newIng);
+        const listId = get(currentListId);
+      if (listId) {
+        const { error } = await supabase.from('items').insert([{
+          id: newIng.id,
+          list_id: listId,
+          name: newIng.name,
+          category: newIng.category,
+          is_bought: false,
+          quantity: newIng.quantity,
+          unit: newIng.unit,
+          linked_meals: newIng.linkedMeals
+        }]);
+        if (error) console.error("Insertion Supabase Error:", error);
+      }
       }
     }
 
@@ -232,12 +294,12 @@
   async function toggleBought(item: Ingredient) {
     const nextStatus = !item.isBought;
     ingredients = ingredients.map(i => i.id === item.id ? { ...i, isBought: nextStatus } : i);
-    await Store.updateIngredient(item.id, { isBought: nextStatus });
+    await supabase.from('items').update({ is_bought: nextStatus }).eq('id', item.id);
   }
 
   async function deleteIngredient(id: string) {
     ingredients = ingredients.filter(i => i.id !== id);
-    await Store.removeIngredient(id);
+    await supabase.from('items').delete().eq('id', id);
   }
 
   let unboughtIngredients = $derived(
@@ -270,7 +332,22 @@
 <div class="flex flex-col h-full min-h-0">
   <header class="sticky top-0 z-20 bg-background/95 backdrop-blur border-b shadow-sm pb-4">
     <div class="px-4 py-4">
-      <h1 class="text-xl font-bold tracking-tight text-center">EasyList</h1>
+      <h1 class="text-xl font-bold tracking-tight text-center">
+        EasyList : {currentListName || "Chargement..."}
+      </h1>
+      {#if currentListName}
+        {#if isOffline}
+         <p class="text-center text-xs text-destructive-foreground mt-1 flex items-center justify-center gap-1 bg-destructive/20 py-0.5 rounded-full w-max mx-auto px-2">
+           <span class="inline-block w-2 h-2 rounded-full bg-destructive animate-pulse"></span>
+           Hors ligne (Modifications non sauvegardées)
+         </p>
+        {:else}
+         <p class="text-center text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
+           <span class="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+           Synchronisé en temps réel
+         </p>
+        {/if}
+      {/if}
     </div>
     
     <!-- Input in the header for easier access -->

@@ -2,8 +2,10 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
+  import { get } from 'svelte/store';
   import { v4 as uuidv4 } from 'uuid';
   import * as Store from '$lib/store';
+  import { updateMealInSync, syncMeals } from '$lib/shoppingSyncStore';
   import type { Meal, MealIngredient } from '$lib/store';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
@@ -20,11 +22,14 @@
 
   onMount(async () => {
     try {
-      const meals = await Store.getMeals();
-      meal = meals.find(m => m.id === mealId) || null;
-      if (!meal) {
+      const meals = get(syncMeals);
+      const fetchedMeal = meals.find(m => m.id === mealId);
+      if (!fetchedMeal) {
         goto('/meals');
+        return;
       }
+      // map to camelCase structure for local display
+      meal = { ...fetchedMeal, isFavorite: fetchedMeal.is_favorite };
     } catch (err) {
       console.warn('Error loading meal:', err);
       goto('/meals'); // Fallback in case the store fails
@@ -49,7 +54,7 @@
     meal.ingredients = [...meal.ingredients, newIng];
     
     // Save
-    await Store.updateMeal(meal.id, { ingredients: meal.ingredients });
+    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
 
     // Ensure ingredient exists in global catalogue
     const allIngredients = await Store.getIngredients();
@@ -76,7 +81,7 @@
   async function removeIngredient(ingId: string) {
     if (!meal) return;
     meal.ingredients = meal.ingredients.filter(i => i.id !== ingId);
-    await Store.updateMeal(meal.id, { ingredients: meal.ingredients });
+    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
   }
 
 </script>
@@ -87,7 +92,7 @@
     <a href="/meals" class="p-2 -ml-2 text-muted-foreground hover:text-foreground">
       <ArrowLeft class="w-5 h-5" />
     </a>
-    <input type="text" bind:value={meal.name} onchange={() => Store.updateMeal(meal!.id, { name: meal!.name })} class="text-xl font-bold tracking-tight bg-transparent border-none outline-none focus:ring-0 w-full" />
+    <input type="text" bind:value={meal.name} onchange={() => updateMealInSync(meal!.id, { name: meal!.name })} class="text-xl font-bold tracking-tight bg-transparent border-none outline-none focus:ring-0 w-full" />
   </header>
 
   <main class="flex-1 overflow-y-auto p-4 space-y-4 pb-32 bg-muted/20">

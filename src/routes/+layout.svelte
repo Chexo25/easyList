@@ -1,8 +1,17 @@
 <script lang="ts">
   import '../app.css';
   import { ShoppingCart, Utensils, CalendarDays } from 'lucide-svelte';
+  import NavListsTab from '$lib/components/NavListsTab.svelte';
   import { page } from '$app/state';
+  import { onMount } from 'svelte';
+  import { initSync } from '$lib/shoppingSyncStore';
+
   let { children } = $props();
+
+  onMount(() => {
+    // Initialise la session anonyme Supabase au démarrage de l'app
+    initSync();
+  });
 </script>
 
 <div class="h-full w-full bg-muted/40 font-sans antialiased text-foreground overflow-hidden">
@@ -25,6 +34,7 @@
         <CalendarDays class="w-5 h-5" />
         <span class="text-[10px] font-medium">Planning</span>
       </a>
+      <NavListsTab active={page.url.pathname.startsWith('/lists')} />
     </nav>
   </main>
 </div>
