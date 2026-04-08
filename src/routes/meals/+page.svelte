@@ -15,15 +15,7 @@
     const unsub = syncMeals.subscribe(val => {
        meals = val.map(m => ({
           ...m,
-          isFavorite: m.is_favorite
-       }));
-    });
-    return unsub;
-  });
-  $effect(() => {
-    const unsub = syncMeals.subscribe(val => {
-       meals = val.map(m => ({
-          ...m,
+          ingredients: m.ingredients || [],
           isFavorite: m.is_favorite
        }));
     });

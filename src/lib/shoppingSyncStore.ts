@@ -13,6 +13,7 @@ export const syncError = writable(null);
 let itemsSubscription = null;
 let mealsSubscription = null;
 let planningSubscription = null;
+let currentSyncId = 0;
 
 // Initialiser l'authentification (crée ou récupère le compte anonyme)
 export async function initSync() {
@@ -107,8 +108,19 @@ export async function joinList(shareCode) {
 
 // Sélectionner une liste et charger ses articles avec synchronisation Temps Réel
 export async function selectList(listId) {
+  const syncId = ++currentSyncId;
   currentListId.set(listId);
   
+  try {
+    // Fire and forget, don't await to avoid hanging
+    supabase.removeAllChannels();
+    itemsSubscription = null;
+    mealsSubscription = null;
+    planningSubscription = null;
+  } catch (err) {
+    console.error("Erreur removeAllChannels:", err);
+  }
+
   // Vider les items actuels pour l'UX
   items.set([]);
   syncMeals.set([]);
@@ -120,6 +132,7 @@ export async function selectList(listId) {
     .select('*')
     .eq('list_id', listId)
     .order('created_at', { ascending: true });
+  if (syncId !== currentSyncId) return; // Un autre selectList a commencé
   if (itemsData) items.set(itemsData);
 
   // Fetch initial meals
@@ -128,17 +141,22 @@ export async function selectList(listId) {
     .select('*')
     .eq('list_id', listId)
     .order('created_at', { ascending: false });
-  if (mealsData) syncMeals.set(mealsData);
+  if (syncId !== currentSyncId) return; // Un autre selectList a commencé
+  if (mealsData) {
+    syncMeals.set(mealsData.map(m => ({ ...m, ingredients: m.ingredients || [] })));
+  }
 
   // Fetch initial planning
   const { data: planData } = await supabase
     .from('planning')
     .select('*')
     .eq('list_id', listId);
+  if (syncId !== currentSyncId) return; // Un autre selectList a commencé
   if (planData) {
     const planObj = {};
     for (const p of planData) {
       planObj[p.date] = {
+        id: p.id,
         date: p.date,
         lunch: p.lunch,
         dinner: p.dinner,
@@ -148,14 +166,13 @@ export async function selectList(listId) {
     }
     syncPlanning.set(planObj);
   }
+  
+  if (syncId !== currentSyncId) return; // Ne pas recréer si on a changé de liste
 
-  // Nettoyer anciennes souscriptions
-  if (itemsSubscription) await supabase.removeChannel(itemsSubscription);
-  if (mealsSubscription) await supabase.removeChannel(mealsSubscription);
-  if (planningSubscription) await supabase.removeChannel(planningSubscription);
+  const uniqueSuffix = Date.now().toString(36);
 
   // Souscrire items
-  itemsSubscription = supabase.channel(`items_list_${listId}`)
+  itemsSubscription = supabase.channel(`items_${listId}_${uniqueSuffix}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `list_id=eq.${listId}` }, (payload) => {
       items.update(current => {
         if (payload.eventType === 'INSERT') return [payload.new, ...current];
@@ -166,33 +183,37 @@ export async function selectList(listId) {
     }).subscribe();
 
   // Souscrire meals
-  mealsSubscription = supabase.channel(`meals_list_${listId}`)
+  mealsSubscription = supabase.channel(`meals_${listId}_${uniqueSuffix}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'meals', filter: `list_id=eq.${listId}` }, (payload) => {
       syncMeals.update(current => {
-        if (payload.eventType === 'INSERT') return [payload.new, ...current];
-        if (payload.eventType === 'UPDATE') return current.map(m => m.id === payload.new.id ? payload.new : m);
+        const safeNew = { ...payload.new, ingredients: payload.new?.ingredients || [] };
+        if (payload.eventType === 'INSERT') {
+          if (current.find(m => m.id === safeNew.id)) {
+            return current.map(m => m.id === safeNew.id ? safeNew : m);
+          }
+          return [safeNew, ...current];
+        }
+        if (payload.eventType === 'UPDATE') return current.map(m => m.id === safeNew.id ? safeNew : m);
         if (payload.eventType === 'DELETE') return current.filter(m => m.id !== payload.old.id);
         return current;
       });
     }).subscribe();
 
   // Souscrire planning
-  planningSubscription = supabase.channel(`planning_list_${listId}`)
+  planningSubscription = supabase.channel(`planning_${listId}_${uniqueSuffix}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'planning', filter: `list_id=eq.${listId}` }, (payload) => {
       syncPlanning.update(current => {
         const copy = { ...current };
         if (payload.eventType === 'DELETE') {
-           // On find the date key (since ID is used for payload.old.id)
-           for (const d in copy) {
-              // Wait, Supabase only sends ID for deletions. 
-              // We can't know the date purely from ID unless we store it.
-              // Just reload or do nothing if we don't have ID in object. 
-              // Actually, we can fetch all or just rely on UUID.
+           const dateKey = Object.keys(copy).find(d => copy[d].id === payload.old.id);
+           if (dateKey) {
+             delete copy[dateKey];
+           } else {
+             reloadPlanning(listId);
            }
-           // For simplicity, let's just do a reload of planning on delete
-           reloadPlanning(listId);
         } else {
            copy[payload.new.date] = {
+             id: payload.new.id,
              date: payload.new.date,
              lunch: payload.new.lunch,
              dinner: payload.new.dinner,
@@ -211,6 +232,7 @@ async function reloadPlanning(listId) {
     const planObj = {};
     for (const p of data) {
       planObj[p.date] = {
+        id: p.id,
         date: p.date,
         lunch: p.lunch,
         dinner: p.dinner,
@@ -323,7 +345,10 @@ export async function updatePlannedDayInSync(date, updates) {
   if (!listId) return;
 
   const currentPlan = get(syncPlanning);
+  const existingId = currentPlan[date]?.id;
+
   let payload = {
+    id: existingId || uuidv4(),
     list_id: listId,
     date,
     lunch: updates.lunch !== undefined ? updates.lunch : (currentPlan[date]?.lunch || null),
@@ -331,16 +356,11 @@ export async function updatePlannedDayInSync(date, updates) {
     lunch_excluded: updates.lunchExcluded !== undefined ? updates.lunchExcluded : (currentPlan[date]?.lunchExcluded || []),
     dinner_excluded: updates.dinnerExcluded !== undefined ? updates.dinnerExcluded : (currentPlan[date]?.dinnerExcluded || [])
   };
-
-  const { data: existing } = await supabase.from('planning').select('id').eq('list_id', listId).eq('date', date).single();
-  if (existing) {
-     payload.id = existing.id;
-  }
-  if (!payload.id) payload.id = uuidv4();
   
   syncPlanning.update(current => ({
      ...current,
      [date]: {
+        id: payload.id,
         date,
         lunch: payload.lunch,
         dinner: payload.dinner,
@@ -350,7 +370,11 @@ export async function updatePlannedDayInSync(date, updates) {
   }));
 
   const { error } = await supabase.from('planning').upsert(payload, { onConflict: 'list_id,date' });
-  if (error) console.error('Error upserting planning:', error);
+  if (error) {
+    console.error('Error upserting planning:', error);
+    // If it fails, fallback by reloading since local state might be out of sync
+    reloadPlanning(listId);
+  }
 }
 
 export async function updateListName(listId, newName) {

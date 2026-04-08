@@ -293,8 +293,20 @@
 
   async function toggleBought(item: Ingredient) {
     const nextStatus = !item.isBought;
-    ingredients = ingredients.map(i => i.id === item.id ? { ...i, isBought: nextStatus } : i);
-    await supabase.from('items').update({ is_bought: nextStatus }).eq('id', item.id);
+    
+    // We clear quantity and unit when checking the item
+    const updatePayload: any = { isBought: nextStatus };
+    const dbPayload: any = { is_bought: nextStatus };
+    
+    if (nextStatus) {
+      updatePayload.quantity = null;
+      updatePayload.unit = '';
+      dbPayload.quantity = null;
+      dbPayload.unit = '';
+    }
+    
+    ingredients = ingredients.map(i => i.id === item.id ? { ...i, ...updatePayload } : i);
+    await supabase.from('items').update(dbPayload).eq('id', item.id);
   }
 
   async function deleteIngredient(id: string) {

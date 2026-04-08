@@ -175,4 +175,4 @@ Créer une application **offline-first** qui permet de :
 ## ☁️ Étape 10 — Synchronisation (plus tard)
 
 - partage entre utilisateurs  
-- utilisation de firebase pour synchronisation instantanée
+- utilisation de supabase pour synchronisation instantanée
