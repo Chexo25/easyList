@@ -7,6 +7,7 @@ import { updateListName, deleteList } from '$lib/shoppingSyncStore';
   let newListName = '';
   let shareCodeToJoin = '';
   let joinMessage = '';
+  let joinStatus: 'idle' | 'loading' | 'success' | 'error' = 'idle';
   
   let listToEdit = null;
   let editedName = '';
@@ -60,14 +61,18 @@ import { updateListName, deleteList } from '$lib/shoppingSyncStore';
   async function handleJoin() {
     if (!shareCodeToJoin.trim()) return;
     joinMessage = 'Recherche...';
+    joinStatus = 'loading';
     // On met en minuscule car Supabase génère son md5 en minuscule
     const success = await joinList(shareCodeToJoin.toLowerCase());
     if (success) {
       joinMessage = 'Liste rejointe !';
+      joinStatus = 'success';
       shareCodeToJoin = '';
-      setTimeout(() => joinMessage = '', 2000);
+      setTimeout(() => { joinMessage = ''; joinStatus = 'idle'; }, 3000);
     } else {
       joinMessage = 'Code invalide ou erreur.';
+      joinStatus = 'error';
+      setTimeout(() => { joinMessage = ''; joinStatus = 'idle'; }, 3000);
     }
   }
 </script>
@@ -94,14 +99,17 @@ import { updateListName, deleteList } from '$lib/shoppingSyncStore';
         <p class="text-sm text-muted-foreground italic">Vous n'avez pas encore de liste.</p>
       {:else}
         {#each listsValue as list (list.id)}
-          <div 
-            class="p-4 border rounded-xl shadow-sm transition-all duration-200 {currentListIdValue === list.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-card-foreground hover:border-primary/50 cursor-pointer'}"
+          <button 
+            type="button"
+            class="w-full text-left p-4 border rounded-xl shadow-sm transition-all duration-200 {currentListIdValue === list.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-card-foreground hover:border-primary/50 cursor-pointer'}"
             on:click={() => selectList(list.id)}
           >
             <div class="flex justify-between items-start">
               {#if listToEdit === list.id}
-                <form on:submit|preventDefault={() => handleEditSubmit(list.id)} class="flex gap-2 w-full" on:click|stopPropagation>
-                  <input type="text" bind:value={editedName} class="flex-1 px-2 py-1 text-sm border rounded-md" autoFocus/>
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <form on:submit|preventDefault={() => handleEditSubmit(list.id)} class="flex gap-2 w-full" on:click={(e) => e.stopPropagation()}>
+                  <!-- svelte-ignore a11y_autofocus -->
+                  <input type="text" bind:value={editedName} class="flex-1 px-2 py-1 text-sm border rounded-md text-foreground" autofocus/>
                   <button type="submit" class="px-2 py-1 bg-primary text-white rounded-md text-xs">OK</button>
                   <button type="button" class="px-2 py-1 bg-muted text-muted-foreground rounded-md text-xs" on:click|stopPropagation={() => listToEdit = null}>X</button>
                 </form>
@@ -125,7 +133,7 @@ import { updateListName, deleteList } from '$lib/shoppingSyncStore';
               <Key class="w-4 h-4" />
               Code de partage : <strong class="tracking-widest font-mono text-base uppercase">{list.share_code}</strong>
             </div>
-          </div>
+          </button>
         {/each}
       {/if}
     </div>
@@ -152,7 +160,7 @@ import { updateListName, deleteList } from '$lib/shoppingSyncStore';
             <button type="submit" class="px-4 py-2 border border-primary text-primary hover:bg-primary hover:text-white rounded-md text-sm font-medium transition-colors border-dashed">Rejoindre</button>
           </div>
           {#if joinMessage}
-            <span class="text-xs text-blue-600 font-medium">{joinMessage}</span>
+            <span class="text-xs font-medium {joinStatus === 'error' ? 'text-red-600' : joinStatus === 'success' ? 'text-green-600' : 'text-blue-600'}">{joinMessage}</span>
           {/if}
         </form>
       </div>

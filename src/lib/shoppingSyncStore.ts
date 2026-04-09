@@ -1,6 +1,8 @@
 import { writable, get } from 'svelte/store';
 import { v4 as uuidv4 } from 'uuid';
+ 
 import { supabase } from './supabase';
+import { addToOfflineQueue, processOfflineQueue } from './offlineSync';
 
 export const currentUser = writable(null);
 export const lists = writable([]);
@@ -17,6 +19,14 @@ let currentSyncId = 0;
 
 // Initialiser l'authentification (crée ou récupère le compte anonyme)
 export async function initSync() {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      processOfflineQueue();
+      const u = get(currentUser);
+      if (u) loadLists(u.id);
+    });
+    processOfflineQueue();
+  }
   const { data: { session } } = await supabase.auth.getSession();
   
   if (session?.user) {
@@ -246,29 +256,39 @@ async function reloadPlanning(listId) {
 
 
 // Ajouter, cocher, modifier, supprimer un article
-export async function addItem(name, category, quantity, unit, linkedMeals) {
+export async function addItem(id, name, category, quantity, unit, linkedMeals) {
+  if (!id) id = crypto.randomUUID(); // Fallback backward compatibility
   const listId = get(currentListId);
   if (!listId) return;
-  await supabase.from('items').insert([{ 
-    list_id: listId, 
-    name, 
-    category, 
-    quantity, 
-    unit, 
-    linkedMeals 
-  }]);
+  const dbItem = { id, list_id: listId, name, category, quantity, unit, linked_meals: linkedMeals, is_bought: false };
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'items', operation: 'insert', payload: dbItem, match: null });
+    return;
+  }
+  await supabase.from('items').insert([dbItem]);
 }
 
 export async function updateItem(id, updates) {
-  // updates peut contenir { category, quantity, unit, is_bought, linkedMeals }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'items', operation: 'update', payload: updates, match: { id } });
+    return;
+  }
   await supabase.from('items').update(updates).eq('id', id);
 }
 
 export async function toggleItem(id, is_bought) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'items', operation: 'update', payload: { is_bought }, match: { id } });
+    return;
+  }
   await supabase.from('items').update({ is_bought }).eq('id', id);
 }
 
 export async function deleteItem(id) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'items', operation: 'delete', payload: null, match: { id } });
+    return;
+  }
   await supabase.from('items').delete().eq('id', id);
 }
 
@@ -297,45 +317,28 @@ export async function saveItems(itemsArray) {
 
 // --- Repas & Planning ---
 export async function addMealToSync(meal) {
-  const listId = get(currentListId);
-  if (!listId) return;
-  const payload = {
-    id: meal.id,
-    list_id: listId,
-    name: meal.name,
-    ingredients: meal.ingredients || [],
-    is_favorite: meal.isFavorite || false,
-    type: meal.type || '',
-    created_at: new Date().toISOString()
-  };
-  
-  syncMeals.update(current => {
-    // avoid duplicates if realtime arrived first
-    if (current.find(m => m.id === payload.id)) return current;
-    return [payload, ...current];
-  });
-
-  const { error } = await supabase.from('meals').insert([payload]);
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'meals', operation: 'insert', payload: meal, match: null });
+    return;
+  }
+  const { error } = await supabase.from('meals').insert([meal]);
   if (error) console.error('Error inserting meal:', error);
 }
 
 export async function updateMealInSync(id, updates) {
-  const payload = { ...updates };
-  if (payload.isFavorite !== undefined) {
-    payload.is_favorite = payload.isFavorite;
-    delete payload.isFavorite;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'meals', operation: 'update', payload: updates, match: { id } });
+    return;
   }
-  
-  syncMeals.update(current => 
-    current.map(m => m.id === id ? { ...m, ...payload } : m)
-  );
-
-  const { error } = await supabase.from('meals').update(payload).eq('id', id);
+  const { error } = await supabase.from('meals').update(updates).eq('id', id);
   if (error) console.error('Error updating meal:', error);
 }
 
 export async function deleteMealFromSync(id) {
-  syncMeals.update(current => current.filter(m => m.id !== id));
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineQueue({ table: 'meals', operation: 'delete', payload: null, match: { id } });
+    return;
+  }
   const { error } = await supabase.from('meals').delete().eq('id', id);
   if (error) console.error('Error deleting meal:', error);
 }

@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
-  import * as Store from '$lib/store';
-  import { items as syncItems, lists, currentListId, saveItems } from '$lib/shoppingSyncStore';
+  import { items as syncItems, syncMeals, lists, currentListId, saveItems, updateItem, deleteItem, addItem } from '$lib/shoppingSyncStore';
+  import { toast } from 'svelte-sonner';
   import { supabase } from '$lib/supabase';
   import { get } from 'svelte/store';
-  import type { Ingredient, Meal } from '$lib/store';
+  import type { Ingredient, Meal } from '$lib/types';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Label } from '$lib/components/ui/label';
   import { Button } from '$lib/components/ui/button';
@@ -64,7 +64,7 @@
       unsubscribeItems();
     };
   });
-  let meals = $state<Meal[]>([]);
+  let meals = $derived($syncMeals || []);
   let addName = $state('');
   let addCategory = $state('');
   let addQty = $state<number | undefined>();
@@ -90,7 +90,7 @@
       unit: editQty ? editUnit : ''
     };
     ingredients = ingredients.map(i => i.id === editingIngredient!.id ? { ...i, ...updated } : i);
-    await supabase.from('items').update({ ...updated }).eq('id', editingIngredient.id);
+    await updateItem(editingIngredient.id, { ...updated });
     editingIngredient = null;
   }
 
@@ -100,7 +100,7 @@
   let apiProducts = $state<OFFProduct[]>([]);
   let isLoadingApi = $state(false);
 
-  // Debounced API call for OpenFoodFacts
+  // Debounced call for local products database
   $effect(() => {
     const q = addName.trim();
     if (q.length < 2) {
@@ -123,15 +123,6 @@
     return () => clearTimeout(searchTimeout);
   });
 
-  onMount(async () => {
-    try {
-      meals = await Store.getMeals();
-    } catch (err) {
-      console.warn('Tauri store might not be ready in browser:', err);
-      ingredients = [];
-      meals = [];
-    }
-  });
 
   // Extract unique custom ingredients for autocomplete
   let knownProducts = $derived(
@@ -213,7 +204,7 @@
     await saveItems(ingredients);
     addName = '';
     showSuggestions = false;
-    alert(`"${meal.name}" ajouté à la liste de courses !`);
+    toast.success(`"${meal.name}" ajouté à la liste de courses !`);
   }
 
   async function handleAdd(e?: Event) {
@@ -233,11 +224,11 @@
       // Also update the category in case they changed it
       ingredients[existingIndex].category = finalCategory;
       if (addUnit.trim()) ingredients[existingIndex].unit = addUnit.trim();
-      await supabase.from('items').update({ 
+      await updateItem(ingredients[existingIndex].id, {
         quantity: q1 + q2, 
         category: finalCategory,
         unit: ingredients[existingIndex].unit
-      }).eq('id', ingredients[existingIndex].id);
+      });
     } else {
       // Existing BOUGHT ingredient?
       const boughtIndex = ingredients.findIndex(i => i.name.toLowerCase() === ingredientName.toLowerCase() && i.isBought);
@@ -247,13 +238,13 @@
         ingredients[boughtIndex].category = finalCategory;
         ingredients[boughtIndex].linkedMeals = [];
         if (addUnit.trim()) ingredients[boughtIndex].unit = addUnit.trim();
-        await supabase.from('items').update({
+        await updateItem(ingredients[boughtIndex].id, {
           is_bought: false,
           quantity: addQty || 1,
           category: finalCategory,
           unit: ingredients[boughtIndex].unit,
           linked_meals: []
-        }).eq('id', ingredients[boughtIndex].id);
+        });
       } else {
         // Create new
         const newIng: Ingredient = {
@@ -266,20 +257,7 @@
           unit: addUnit.trim()
         };
         ingredients = [...ingredients, newIng];
-        const listId = get(currentListId);
-      if (listId) {
-        const { error } = await supabase.from('items').insert([{
-          id: newIng.id,
-          list_id: listId,
-          name: newIng.name,
-          category: newIng.category,
-          is_bought: false,
-          quantity: newIng.quantity,
-          unit: newIng.unit,
-          linked_meals: newIng.linkedMeals
-        }]);
-        if (error) console.error("Insertion Supabase Error:", error);
-      }
+        await addItem(newIng.id, newIng.name, newIng.category, newIng.quantity, newIng.unit, newIng.linkedMeals);
       }
     }
 
@@ -306,12 +284,12 @@
     }
     
     ingredients = ingredients.map(i => i.id === item.id ? { ...i, ...updatePayload } : i);
-    await supabase.from('items').update(dbPayload).eq('id', item.id);
+    await updateItem(item.id, dbPayload);
   }
 
   async function deleteIngredient(id: string) {
     ingredients = ingredients.filter(i => i.id !== id);
-    await supabase.from('items').delete().eq('id', id);
+    await deleteItem(id);
   }
 
   let unboughtIngredients = $derived(
@@ -338,6 +316,19 @@
         if (orderA !== orderB) return orderA - orderB;
         return a.name.localeCompare(b.name);
       })
+  );
+
+  let groupedUnbought = $derived(
+    unboughtIngredients.reduce((acc, item) => {
+      const cat = item.category || 'Divers';
+      let group = acc.find(g => g.category === cat);
+      if (!group) {
+        group = { category: cat, items: [] };
+        acc.push(group);
+      }
+      group.items.push(item);
+      return acc;
+    }, [] as { category: string, items: typeof unboughtIngredients }[])
   );
 </script>
 
@@ -439,7 +430,7 @@
 
             {#if displayApiProducts.length > 0}
               <div class="text-xs font-semibold text-muted-foreground uppercase tracking-widest px-3 py-2 bg-muted/30 flex justify-between items-center">
-                <span>Suggestions OpenFoodFacts</span>
+                <span>Suggestions</span>
                 {#if isLoadingApi}
                   <span class="w-3 h-3 border-2 border-primary/50 border-t-primary rounded-full animate-spin"></span>
                 {/if}
@@ -502,54 +493,61 @@
       {/if}
 
       {#if unboughtIngredients.length > 0}
-        <div class="bg-card border rounded-2xl shadow-sm overflow-hidden">
-          {#each unboughtIngredients as item, index}
-            <div class="flex items-center gap-4 p-4 {index !== unboughtIngredients.length - 1 ? 'border-b border-border/50' : ''} transition-colors hover:bg-muted/30">
-              <Checkbox
-                id="ing-{item.id}"
-                checked={item.isBought}
-                onCheckedChange={() => toggleBought(item)}
-                class="rounded-full w-6 h-6 border-2 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground shrink-0"
-              />
-              
-              <Label
-                for="ing-{item.id}"
-                class="flex-1 text-base font-medium cursor-pointer transition-all leading-none w-full"
-              >
-                {item.name} <span class="text-xs font-normal ml-2 bg-muted px-2 py-1 rounded-full no-underline mx-1 text-muted-foreground">{item.category}</span>
-                {#if item.quantity}
-                  <span class="text-sm text-primary font-bold ml-1">{item.quantity} {item.unit || ''}</span>
-                {/if}
-              </Label>
+        <div class="space-y-6">
+          {#each groupedUnbought as group}
+            <div class="space-y-2">
+              <h2 class="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">{group.category}</h2>
+              <div class="bg-card border rounded-2xl shadow-sm overflow-hidden">
+                {#each group.items as item, index}
+                  <div class="flex items-center gap-4 p-4 {index !== group.items.length - 1 ? 'border-b border-border/50' : ''} transition-colors hover:bg-muted/30">
+                    <Checkbox
+                      id="ing-{item.id}"
+                      checked={item.isBought}
+                      onCheckedChange={() => toggleBought(item)}
+                      class="rounded-full w-6 h-6 border-2 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground shrink-0"
+                    />
+                    
+                    <Label
+                      for="ing-{item.id}"
+                      class="flex-1 text-base font-medium cursor-pointer transition-all leading-none w-full"
+                    >
+                      {item.name}
+                      {#if item.quantity}
+                        <span class="text-sm text-primary font-bold ml-1">{item.quantity} {item.unit || ''}</span>
+                      {/if}
+                    </Label>
 
-              <button class="text-primary/50 hover:text-primary p-2 transition-colors rounded-full hover:bg-primary/10 shrink-0" onclick={() => openEdit(item)} title="Modifier" aria-label="Modifier">
-                <Pencil class="w-5 h-5" />
-              </button>
-
-              {#if item.linkedMeals && item.linkedMeals.length > 0}
-                <Dialog.Root>
-                  <Dialog.Trigger>
-                    <button class="bg-primary/10 text-primary hover:bg-primary/20 transition-colors p-2 text-xs flex items-center gap-1.5 rounded-full font-medium" title="Voir les repas">
-                      <Utensils class="w-3.5 h-3.5" /> {item.linkedMeals.length}
+                    <button class="text-primary/50 hover:text-primary p-2 transition-colors rounded-full hover:bg-primary/10 shrink-0" onclick={() => openEdit(item)} title="Modifier" aria-label="Modifier">
+                      <Pencil class="w-5 h-5" />
                     </button>
-                  </Dialog.Trigger>
-                  <Dialog.Content>
-                    <Dialog.Header>
-                      <Dialog.Title>Repas associés</Dialog.Title>
-                      <Dialog.Description class="pt-4">
-                        Ce produit ({item.name}) est prévu pour les repas suivants :
-                      </Dialog.Description>
-                    </Dialog.Header>
-                    <div class="space-y-2 mt-4">
-                      {#each item.linkedMeals as mealName}
-                        <div class="px-4 py-3 bg-muted/50 border border-border/50 rounded-xl text-sm font-medium flex items-center gap-3">
-                           <Utensils class="w-4 h-4 text-primary" /> {mealName}
-                        </div>
-                      {/each}
-                    </div>
-                  </Dialog.Content>
-                </Dialog.Root>
-              {/if}
+
+                    {#if item.linkedMeals && item.linkedMeals.length > 0}
+                      <Dialog.Root>
+                        <Dialog.Trigger>
+                          <button class="bg-primary/10 text-primary hover:bg-primary/20 transition-colors p-2 text-xs flex items-center gap-1.5 rounded-full font-medium" title="Voir les repas">
+                            <Utensils class="w-3.5 h-3.5" /> {item.linkedMeals.length}
+                          </button>
+                        </Dialog.Trigger>
+                        <Dialog.Content>
+                          <Dialog.Header>
+                            <Dialog.Title>Repas associés</Dialog.Title>
+                            <Dialog.Description class="pt-4">
+                              Ce produit ({item.name}) est prévu pour les repas suivants :
+                            </Dialog.Description>
+                          </Dialog.Header>
+                          <div class="space-y-2 mt-4">
+                            {#each item.linkedMeals as mealName}
+                              <div class="px-4 py-3 bg-muted/50 border border-border/50 rounded-xl text-sm font-medium flex items-center gap-3">
+                                 <Utensils class="w-4 h-4 text-primary" /> {mealName}
+                              </div>
+                            {/each}
+                          </div>
+                        </Dialog.Content>
+                      </Dialog.Root>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
             </div>
           {/each}
         </div>

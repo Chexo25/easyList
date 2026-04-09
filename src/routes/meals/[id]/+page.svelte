@@ -4,9 +4,8 @@
   import { goto } from '$app/navigation';
   import { get } from 'svelte/store';
   import { v4 as uuidv4 } from 'uuid';
-  import * as Store from '$lib/store';
-  import { updateMealInSync, syncMeals } from '$lib/shoppingSyncStore';
-  import type { Meal, MealIngredient } from '$lib/store';
+  import { updateMealInSync, syncMeals, items as syncItems, addItem } from '$lib/shoppingSyncStore';
+  import type { Meal, MealIngredient } from '$lib/types';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { ArrowLeft, ArrowUp, Trash2 } from 'lucide-svelte';
@@ -57,12 +56,12 @@
     await updateMealInSync(meal.id, { ingredients: meal.ingredients });
 
     // Ensure ingredient exists in global catalogue
-    const allIngredients = await Store.getIngredients();
+    const allIngredients = get(syncItems) || [];
     const existing = allIngredients.find(i => i.name.toLowerCase() === ingredientName.toLowerCase());
     
     if (!existing) {
       // Add entirely new ingredient to the catalogue
-      await Store.addIngredient({
+      await addItem({
         id: uuidv4(),
         name: ingredientName,
         category: ingredientCategory,

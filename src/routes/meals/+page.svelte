@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
-  import * as Store from '$lib/store';
   import { syncMeals, addMealToSync, updateMealInSync, deleteMealFromSync, saveItems, items as syncItems } from '$lib/shoppingSyncStore';
   import { get } from 'svelte/store';
-  import type { Meal, Ingredient } from '$lib/store';
+  import { toast } from 'svelte-sonner';
+  import type { Meal, Ingredient } from '$lib/types';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Plus } from 'lucide-svelte';
@@ -110,7 +110,7 @@
     }
     
     await saveItems(toSave);
-    alert(`"${meal.name}" ajouté à la liste de courses !`);
+    toast.success(`"${meal.name}" ajouté à la liste de courses !`);
   }
 
 </script>
@@ -142,7 +142,7 @@
     {#if meals.length > 0}
       <div class="flex flex-col gap-3 pb-2 border-b border-border/50">
         <label class="flex items-center gap-2 text-sm cursor-pointer w-fit">
-          <input type="checkbox" bind:checked={filterFavoriteOnly} class="rounded border-border text-primary focus:ring-primary h-4 w-4" />
+          <input type="checkbox" bind:checked={filterFavoriteOnly} class="rounded border-border text-primary accent-primary focus:ring-primary h-4 w-4" />
           <span class="font-medium">Uniquement Favoris ⭐</span>
         </label>
         

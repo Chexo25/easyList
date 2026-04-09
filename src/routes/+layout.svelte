@@ -5,6 +5,7 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { initSync } from '$lib/shoppingSyncStore';
+  import { Toaster } from "$lib/components/ui/sonner";
 
   let { children } = $props();
 
@@ -15,6 +16,7 @@
 </script>
 
 <div class="h-full w-full bg-muted/40 font-sans antialiased text-foreground overflow-hidden">
+  <Toaster position="top-center" richColors />
   <main class="max-w-md mx-auto bg-background h-full shadow-xl relative sm:border-x flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] overflow-hidden">
     <div class="flex-1 flex flex-col w-full min-h-0 relative">
       {@render children()}

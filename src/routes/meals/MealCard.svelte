@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
   import { v4 as uuidv4 } from 'uuid';
-  import * as Store from '$lib/store';
-  import { updateMealInSync } from '$lib/shoppingSyncStore';
-  import type { Meal, MealIngredient } from '$lib/store';
+  import { updateMealInSync, items as syncItems, addItem } from '$lib/shoppingSyncStore';
+  import type { Meal, MealIngredient } from '$lib/types';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { Label } from '$lib/components/ui/label';
@@ -69,14 +69,13 @@
   let knownProducts = $state<{name: string, category: string}[]>([]);
 
   $effect(() => {
-    Store.getIngredients().then(all => {
-      knownProducts = Array.from(
-        new Map(all.map((i: any) => [i.name.toLowerCase(), { name: i.name, category: i.category }])).values()
-      );
-    });
+    const all = $syncItems || [];
+    knownProducts = Array.from(
+      new Map(all.map((i: any) => [i.name.toLowerCase(), { name: i.name, category: i.category }])).values()
+    );
   });
 
-  // Debounced API call for OpenFoodFacts
+  // Debounced API call for local products database
   $effect(() => {
     const q = addName.trim();
     if (q.length < 2) {
@@ -143,11 +142,11 @@
     meal.ingredients = [...meal.ingredients, newIng];
     await updateMealInSync(meal.id, { ingredients: meal.ingredients });
 
-    const allIngredients = await Store.getIngredients();
+    const allIngredients = get(syncItems) || [];
     const existing = allIngredients.find((i: any) => i.name.toLowerCase() === ingredientName.toLowerCase());
     
     if (!existing) {
-      await Store.addIngredient({
+      await addItem({
         id: uuidv4(),
         name: ingredientName,
         category: ingredientCategory,
@@ -317,7 +316,7 @@
 
             {#if displayApiProducts.length > 0}
               <div class="text-xs font-semibold text-muted-foreground uppercase tracking-widest px-3 py-2 bg-muted/30 flex justify-between items-center">
-                <span>Suggestions OpenFoodFacts</span>
+                <span>Suggestions</span>
                 {#if isLoadingApi}
                   <span class="w-3 h-3 border-2 border-primary/50 border-t-primary rounded-full animate-spin"></span>
                 {/if}

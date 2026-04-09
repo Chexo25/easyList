@@ -4,13 +4,13 @@
   import { Button } from '$lib/components/ui/button';
   import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
   import * as Dialog from '$lib/components/ui/dialog';
-  import * as Store from '$lib/store';
   import { syncMeals, syncPlanning, updatePlannedDayInSync, saveItems, items as syncItems } from '$lib/shoppingSyncStore';
   import { get } from 'svelte/store';
+  import { toast } from 'svelte-sonner';
   
   
   
-  import type { Meal, PlannedDay } from '$lib/store';
+  import type { Meal, PlannedDay } from '$lib/types';
   import { v4 as uuidv4 } from 'uuid';
   
   let meals: Meal[] = $state([]);
@@ -197,7 +197,7 @@
     await saveItems(toSave);
     exportDialogOpen = false;
     setTimeout(() => {
-        alert("Les repas sélectionnés ont été ajoutés à la liste de courses !");
+        toast.success("Les menus sélectionnés ont été ajoutés à la liste de courses !");
     }, 100);
   }
 </script>
@@ -265,12 +265,13 @@
             {@const meal = meals.find(m => m.id === plan.lunch)}
             {#if meal}
             <div class="border rounded-xl p-0 shadow-sm bg-card hover:bg-muted/30 transition-colors flex flex-col overflow-hidden">
-                <div class="p-4 flex justify-between items-center cursor-pointer" onclick={() => openDetails(formatDate(activeDate), 'lunch', meal)}>
+                <button type="button" class="w-full p-4 flex justify-between items-center cursor-pointer text-left" onclick={() => openDetails(formatDate(activeDate), 'lunch', meal)}>
                     <div class="flex-1 min-w-0">
                         <p class="font-bold truncate">{meal.name}</p>
                         <p class="text-xs text-muted-foreground mt-1 underline decoration-dashed underline-offset-2">Gérer les ingrédients : {meal.ingredients.length - (plan.lunchExcluded?.length || 0)} / {meal.ingredients.length}</p>
                     </div>
-                    <div class="flex space-x-2 ml-4 shrink-0" onclick={(e) => e.stopPropagation()}>
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div class="flex space-x-2 ml-4 shrink-0" onclick={(e) => e.stopPropagation()} role="presentation">
                         <Button variant="outline" size="icon" class="h-8 w-8 text-muted-foreground" onclick={() => openMealSelection(formatDate(activeDate), 'lunch')}>
                             <Utensils class="w-4 h-4" />
                         </Button>
@@ -278,7 +279,7 @@
                             <Trash2 class="w-4 h-4" />
                         </Button>
                     </div>
-                </div>
+                </button>
             </div>
             {/if}
         {:else}
@@ -302,12 +303,13 @@
             {@const meal = meals.find(m => m.id === plan.dinner)}
             {#if meal}
             <div class="border rounded-xl p-0 shadow-sm bg-card hover:bg-muted/30 transition-colors flex flex-col overflow-hidden">
-                <div class="p-4 flex justify-between items-center cursor-pointer" onclick={() => openDetails(formatDate(activeDate), 'dinner', meal)}>
+                <button type="button" class="w-full p-4 flex justify-between items-center cursor-pointer text-left" onclick={() => openDetails(formatDate(activeDate), 'dinner', meal)}>
                     <div class="flex-1 min-w-0">
                         <p class="font-bold truncate">{meal.name}</p>
                         <p class="text-xs text-muted-foreground mt-1 underline decoration-dashed underline-offset-2">Gérer les ingrédients : {meal.ingredients.length - (plan.dinnerExcluded?.length || 0)} / {meal.ingredients.length}</p>
                     </div>
-                    <div class="flex space-x-2 ml-4 shrink-0" onclick={(e) => e.stopPropagation()}>
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div class="flex space-x-2 ml-4 shrink-0" onclick={(e) => e.stopPropagation()} role="presentation">
                         <Button variant="outline" size="icon" class="h-8 w-8 text-muted-foreground" onclick={() => openMealSelection(formatDate(activeDate), 'dinner')}>
                             <Utensils class="w-4 h-4" />
                         </Button>
@@ -315,7 +317,7 @@
                             <Trash2 class="w-4 h-4" />
                         </Button>
                     </div>
-                </div>
+                </button>
             </div>
             {/if}
         {:else}
