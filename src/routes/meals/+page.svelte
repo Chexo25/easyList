@@ -57,6 +57,11 @@
     meals = [newMeal, ...meals]; // Add to top of the list
     newMealName = '';
     
+    // Blur to allow the new card to take focus
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    
     try {
       await addMealToSync(newMeal);
     } catch(err) {

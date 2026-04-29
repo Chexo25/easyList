@@ -1,5 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
+  import { onMount, tick } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
   import { updateMealInSync, items as syncItems, addItem } from '$lib/shoppingSyncStore';
   import type { Meal, MealIngredient } from '$lib/types';
@@ -123,6 +124,20 @@
     addCategory = cat;
     showCategorySuggestions = false;
   }
+
+  let addNameInput = $state<HTMLInputElement | null>(null);
+
+  let hasFocused = false;
+  $effect(() => {
+    // Si le composant a l'input monté et que le repas vient d'être créé < 2 sec
+    if (addNameInput && !hasFocused && meal.createdAt && Date.now() - meal.createdAt < 2000) {
+      // Un setTimeout pour s'assurer que le blur du header a bien eu lieu
+      setTimeout(() => {
+        addNameInput?.focus();
+      }, 100);
+      hasFocused = true;
+    }
+  });
 
   async function handleAddIngredient(e?: Event) {
     if (e) e.preventDefault();
@@ -256,6 +271,7 @@
         <div class="flex gap-2 relative">
           <div class="flex-1 relative">
             <Input 
+              bind:ref={addNameInput}
               bind:value={addName} 
               onfocus={() => showSuggestions = true}
               placeholder="Ingredient (ex: Tomates)" 
@@ -273,7 +289,7 @@
               autocomplete="off"
             />
             {#if showCategorySuggestions}
-              <div class="absolute right-0 left-[-100px] top-[44px] bg-card border rounded-xl shadow-lg z-40 overflow-hidden max-h-48 overflow-y-auto">
+              <div class="absolute right-0 left-[-100px] bottom-full mb-1 bg-card border rounded-xl shadow-lg z-40 overflow-hidden max-h-48 overflow-y-auto">
                 {#if filteredCategories.length === 0}
                   <div class="px-3 py-2 text-sm text-muted-foreground text-center">Nouveau rayon...</div>
                 {:else}
@@ -292,7 +308,7 @@
         </div>
 
         {#if showSuggestions && addName.trim().length > 0}
-          <div class="absolute left-0 right-0 top-11 bg-card border rounded-xl shadow-lg z-30 overflow-hidden max-h-48 overflow-y-auto">
+          <div class="absolute left-0 right-0 bottom-full mb-1 bg-card border rounded-xl shadow-lg z-30 overflow-hidden max-h-48 overflow-y-auto">
             
             <!-- Option de création rapide si le nom n'existe pas exactement -->
             {#if !knownProducts.some(p => p.name.toLowerCase() === addName.trim().toLowerCase())}
@@ -381,7 +397,7 @@
           autocomplete="off"
         />
         {#if showEditCategorySuggestions}
-          <div class="absolute left-0 right-0 top-[60px] bg-card border rounded-xl shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
+            <div class="absolute left-0 right-0 bottom-[60px] mb-1 bg-card border rounded-xl shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
             {#if filteredEditCategories.length === 0}
               <div class="px-3 py-2 text-sm text-muted-foreground text-center">Nouveau rayon...</div>
             {:else}

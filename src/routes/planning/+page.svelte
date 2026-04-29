@@ -283,7 +283,7 @@
             </div>
             {/if}
         {:else}
-          <button class="w-full py-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors active:scale-[0.98]" onclick={() => openMealSelection(formatDate(activeDate), 'lunch')}>
+          <button type="button" class="w-full py-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer" onclick={() => openMealSelection(formatDate(activeDate), 'lunch')}>
              <span class="bg-muted p-2 rounded-full"><Plus class="w-5 h-5" /></span>
              <span class="font-medium text-sm">Planifier un plat</span>
           </button>
@@ -321,7 +321,7 @@
             </div>
             {/if}
         {:else}
-          <button class="w-full py-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors active:scale-[0.98]" onclick={() => openMealSelection(formatDate(activeDate), 'dinner')}>
+          <button type="button" class="w-full py-6 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer" onclick={() => openMealSelection(formatDate(activeDate), 'dinner')}>
              <span class="bg-muted p-2 rounded-full"><Plus class="w-5 h-5" /></span>
              <span class="font-medium text-sm">Planifier un plat</span>
           </button>
@@ -342,7 +342,7 @@
             </div>
             <div class="grid grid-cols-2 gap-3">
               <!-- Midi -->
-              <button class="border rounded-xl p-3 flex flex-col items-center justify-center gap-2 min-h-[6rem] text-sm transition-colors active:scale-[0.98] {plan.lunch ? 'bg-amber-50/50 border-amber-200' : 'border-dashed bg-muted/10 text-muted-foreground hover:bg-muted/40'}" onclick={() => openMealSelection(formatDate(d), 'lunch')}>
+              <button type="button" class="border rounded-xl p-3 flex flex-col items-center justify-center gap-2 min-h-[6rem] text-sm transition-colors cursor-pointer {plan.lunch ? 'bg-amber-50/50 border-amber-200' : 'border-dashed bg-muted/10 text-muted-foreground hover:bg-muted/40'}" onclick={() => openMealSelection(formatDate(d), 'lunch')}>
                 <span class="text-[11px] font-bold uppercase tracking-wider {plan.lunch ? 'text-amber-700' : 'text-muted-foreground'} block w-full text-center">Midi</span>
                 {#if plan.lunch}
                   {@const m = meals.find(x => x.id === plan.lunch)}
@@ -353,7 +353,7 @@
               </button>
                 
               <!-- Soir -->
-              <button class="border rounded-xl p-3 flex flex-col items-center justify-center gap-2 min-h-[6rem] text-sm transition-colors active:scale-[0.98] {plan.dinner ? 'bg-indigo-50/50 border-indigo-200' : 'border-dashed bg-muted/10 text-muted-foreground hover:bg-muted/40'}" onclick={() => openMealSelection(formatDate(d), 'dinner')}>
+              <button type="button" class="border rounded-xl p-3 flex flex-col items-center justify-center gap-2 min-h-[6rem] text-sm transition-colors cursor-pointer {plan.dinner ? 'bg-indigo-50/50 border-indigo-200' : 'border-dashed bg-muted/10 text-muted-foreground hover:bg-muted/40'}" onclick={() => openMealSelection(formatDate(d), 'dinner')}>
                 <span class="text-[11px] font-bold uppercase tracking-wider {plan.dinner ? 'text-indigo-700' : 'text-muted-foreground'} block w-full text-center">Soir</span>
                 {#if plan.dinner}
                   {@const m = meals.find(x => x.id === plan.dinner)}

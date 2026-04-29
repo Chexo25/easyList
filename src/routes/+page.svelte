@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
-  import { items as syncItems, syncMeals, lists, currentListId, saveItems, updateItem, deleteItem, addItem } from '$lib/shoppingSyncStore';
+  import { items as syncItems, syncMeals, lists, currentListId, saveItems, updateItem, deleteItem, addItem, isListsLoaded, isNetworkOffline } from '$lib/shoppingSyncStore';
   import { toast } from 'svelte-sonner';
   import { supabase } from '$lib/supabase';
   import { get } from 'svelte/store';
@@ -20,16 +20,16 @@
 
   let isOffline = $state(false);
   let currentListName = $state("");
+  let _isListsLoaded = $state(false);
   let unsubscribeLists: () => void;
   let unsubscribeCurrentList: () => void;
+  let unsubscribeIsListsLoaded: () => void;
+  let unsubscribeNetwork: () => void;
 
   $effect(() => {
-    isOffline = !navigator.onLine;
-    const handleOffline = () => isOffline = true;
-    const handleOnline = () => isOffline = false;
-    
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('online', handleOnline);
+    unsubscribeNetwork = isNetworkOffline.subscribe(v => isOffline = v);
+
+    unsubscribeIsListsLoaded = isListsLoaded.subscribe(v => _isListsLoaded = v);
 
     unsubscribeLists = lists.subscribe(ls => {
       const currentId = get(currentListId);
@@ -57,8 +57,8 @@
     });
     
     return () => {
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('online', handleOnline);
+      if (unsubscribeNetwork) unsubscribeNetwork();
+      if (unsubscribeIsListsLoaded) unsubscribeIsListsLoaded();
       if (unsubscribeLists) unsubscribeLists();
       if (unsubscribeCurrentList) unsubscribeCurrentList();
       unsubscribeItems();
@@ -336,7 +336,7 @@
   <header class="sticky top-0 z-20 bg-background/95 backdrop-blur border-b shadow-sm pb-4">
     <div class="px-4 py-4">
       <h1 class="text-xl font-bold tracking-tight text-center">
-        EasyList : {currentListName || "Chargement..."}
+        EasyList : {currentListName || (_isListsLoaded ? "Créez votre liste" : "Chargement...")}
       </h1>
       {#if currentListName}
         {#if isOffline}

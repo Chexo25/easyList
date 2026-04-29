@@ -3,14 +3,76 @@ import { v4 as uuidv4 } from 'uuid';
  
 import { supabase } from './supabase';
 import { addToOfflineQueue, processOfflineQueue } from './offlineSync';
+import type { User } from '@supabase/supabase-js';
+import type { Ingredient, Meal, PlannedDay } from './types';
 
-export const currentUser = writable(null);
-export const lists = writable([]);
-export const currentListId = writable(null);
-export const items = writable([]);
-export const syncMeals = writable([]);
-export const syncPlanning = writable({});
-export const syncError = writable(null);
+export const currentUser = writable<User | null>(null);
+
+export const isNetworkOffline = writable(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => isNetworkOffline.set(false));
+  window.addEventListener('offline', () => isNetworkOffline.set(true));
+  
+  let wasOffline = false;
+  setInterval(async () => {
+    if (document.hidden) return;
+      if (document.hidden) return;
+      if (!navigator.onLine) {
+      isNetworkOffline.set(true);
+      wasOffline = true;
+      return;
+    }
+    try {
+      await fetch(import.meta.env.VITE_SUPABASE_URL + '/rest/v1/', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+      isNetworkOffline.set(false);
+      
+      // If we just came back online, process queue and reload
+      if (wasOffline) {
+        wasOffline = false;
+        await processOfflineQueue();
+        const u = get(currentUser);
+        const lId = get(currentListId);
+        if (u && !lId) await loadLists(u.id);
+        if (lId) selectList(lId);
+      }
+    } catch {
+      isNetworkOffline.set(true);
+      wasOffline = true;
+    }
+  }, 10000);
+}
+
+
+function createCachedStore<T>(key: string, initialValue: T) {
+  let storedValue = initialValue;
+  if (typeof window !== 'undefined') {
+    const cached = localStorage.getItem(key);
+    if (cached) {
+      try {
+        storedValue = JSON.parse(cached);
+      } catch (e) {
+        console.error("Erreur de parsing localStorage pour", key, e);
+      }
+    }
+  }
+  const store = writable<T>(storedValue);
+  
+  if (typeof window !== 'undefined') {
+    store.subscribe((value) => {
+      localStorage.setItem(key, JSON.stringify(value));
+    });
+  }
+  return store;
+}
+
+export const lists = createCachedStore<any[]>('easyList_lists_cache', []);
+export const isListsLoaded = writable<boolean>(false);
+export const currentListId = createCachedStore<string | null>('easyList_currentListId_cache', null);
+export const items = createCachedStore<any[]>('easyList_items_cache', []);
+export const syncMeals = createCachedStore<any[]>('easyList_syncMeals_cache', []);
+export const syncPlanning = createCachedStore<any>('easyList_syncPlanning_cache', {});
+export const syncError = writable<string | null>(null);
 
 let itemsSubscription = null;
 let mealsSubscription = null;
@@ -20,13 +82,23 @@ let currentSyncId = 0;
 // Initialiser l'authentification (crée ou récupère le compte anonyme)
 export async function initSync() {
   if (typeof window !== 'undefined') {
-    window.addEventListener('online', () => {
-      processOfflineQueue();
+    window.addEventListener('online', async () => {
+      await processOfflineQueue();
       const u = get(currentUser);
-      if (u) loadLists(u.id);
+      const listId = get(currentListId);
+      if (u && !listId) await loadLists(u.id);
+      if (listId) selectList(listId); // Reload to get fresh DB state
     });
-    processOfflineQueue();
+    // Let's run it once on init
+    await processOfflineQueue();
   }
+  
+  if (get(lists).length > 0) isListsLoaded.set(true);
+  if (get(currentListId)) {
+    // We already awaited the queue, so DB is up to date.
+    selectList(get(currentListId));
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
   
   if (session?.user) {
@@ -62,6 +134,7 @@ async function loadLists(userId) {
       selectList(userLists[0].id);
     }
   }
+  isListsLoaded.set(true);
 }
 
 // Créer une nouvelle liste
@@ -83,7 +156,72 @@ export async function createNewList(name) {
     .from('list_members')
     .insert([{ list_id: newList.id, user_id: user.id }]);
 
-  // 3. Recharger les listes et sélectionner la nouvelle
+  // 3. Migrer les éléments locaux vers la nouvelle liste
+  const currentItems = get(items);
+  const localItems = currentItems.filter(item => !item.list_id);
+  
+  if (localItems.length > 0) {
+    const itemsToInsert = localItems.map(item => ({
+      ...item,
+      list_id: newList.id
+    }));
+    
+    try {
+      await supabase.from('items').insert(itemsToInsert);
+    } catch (err) {
+      console.error('Error migrating items to new list:', err);
+    }
+  }
+
+  const currentMeals = get(syncMeals);
+  const localMeals = currentMeals.filter(meal => !meal.list_id);
+
+  if (localMeals.length > 0) {
+    const mealsToInsert = localMeals.map(meal => {
+      const payload = { ...meal, list_id: newList.id };
+      if (payload.createdAt !== undefined) {
+        payload.created_at = new Date(payload.createdAt).toISOString();
+        delete payload.createdAt;
+      }
+      if (payload.isFavorite !== undefined) {
+        payload.is_favorite = payload.isFavorite;
+        delete payload.isFavorite;
+      }
+      return payload;
+    });
+
+    try {
+      await supabase.from('meals').insert(mealsToInsert);
+    } catch (err) {
+      console.error('Error migrating meals to new list:', err);
+    }
+  }
+
+  const currentPlan = get(syncPlanning);
+  const localPlanDates = Object.keys(currentPlan).filter(date => !currentPlan[date].list_id);
+
+  if (localPlanDates.length > 0) {
+    const planToInsert = localPlanDates.map(date => ({
+      ...currentPlan[date],
+      list_id: newList.id,
+      lunch_excluded: currentPlan[date].lunchExcluded || [],
+      dinner_excluded: currentPlan[date].dinnerExcluded || []
+    }));
+
+    // Clean up frontend formatted fields before sending to db
+    planToInsert.forEach(p => {
+      delete p.lunchExcluded;
+      delete p.dinnerExcluded;
+    });
+
+    try {
+      await supabase.from('planning').insert(planToInsert);
+    } catch (err) {
+      console.error('Error migrating planning to new list:', err);
+    }
+  }
+
+  // 4. Recharger les listes et sélectionner la nouvelle
   await loadLists(user.id);
   selectList(newList.id);
   return newList;
@@ -118,6 +256,7 @@ export async function joinList(shareCode) {
 
 // Sélectionner une liste et charger ses articles avec synchronisation Temps Réel
 export async function selectList(listId) {
+  const oldListId = get(currentListId);
   const syncId = ++currentSyncId;
   currentListId.set(listId);
   
@@ -131,10 +270,15 @@ export async function selectList(listId) {
     console.error("Erreur removeAllChannels:", err);
   }
 
-  // Vider les items actuels pour l'UX
-  items.set([]);
-  syncMeals.set([]);
-  syncPlanning.set({});
+  // Preserve local items (without list_id) before clearing
+  const localItems = get(items).filter(i => !i.list_id);
+
+  // Vider les items actuels seulement si on change de liste
+  if (oldListId !== listId) {
+    items.set([]);
+    syncMeals.set([]);
+    syncPlanning.set({});
+  }
 
   // Fetch initial items
   const { data: itemsData } = await supabase
@@ -143,9 +287,17 @@ export async function selectList(listId) {
     .eq('list_id', listId)
     .order('created_at', { ascending: true });
   if (syncId !== currentSyncId) return; // Un autre selectList a commencé
-  if (itemsData) items.set(itemsData);
+  if (itemsData) {
+    // Merge with local items (without list_id)
+    items.set([...localItems, ...itemsData]);
+  } else {
+    items.set(localItems);
+  }
 
   // Fetch initial meals
+  const currentMeals = get(syncMeals);
+  const localMeals = currentMeals.filter(meal => !meal.list_id);
+
   const { data: mealsData } = await supabase
     .from('meals')
     .select('*')
@@ -153,17 +305,29 @@ export async function selectList(listId) {
     .order('created_at', { ascending: false });
   if (syncId !== currentSyncId) return; // Un autre selectList a commencé
   if (mealsData) {
-    syncMeals.set(mealsData.map(m => ({ ...m, ingredients: m.ingredients || [] })));
+    const formattedData = mealsData.map(m => ({ ...m, ingredients: m.ingredients || [] }));
+    syncMeals.set([...localMeals, ...formattedData]);
+  } else {
+    syncMeals.set(localMeals);
   }
 
   // Fetch initial planning
+  const currentPlan = get(syncPlanning);
+  const localPlanObj = {};
+  for (const d in currentPlan) {
+    if (!currentPlan[d].list_id) {
+      localPlanObj[d] = currentPlan[d];
+    }
+  }
+
   const { data: planData } = await supabase
     .from('planning')
     .select('*')
     .eq('list_id', listId);
   if (syncId !== currentSyncId) return; // Un autre selectList a commencé
+  
+  const planObj = { ...localPlanObj };
   if (planData) {
-    const planObj = {};
     for (const p of planData) {
       planObj[p.date] = {
         id: p.id,
@@ -171,11 +335,12 @@ export async function selectList(listId) {
         lunch: p.lunch,
         dinner: p.dinner,
         lunchExcluded: p.lunch_excluded || [],
-        dinnerExcluded: p.dinner_excluded || []
+        dinnerExcluded: p.dinner_excluded || [],
+        list_id: p.list_id
       };
     }
-    syncPlanning.set(planObj);
   }
+  syncPlanning.set(planObj);
   
   if (syncId !== currentSyncId) return; // Ne pas recréer si on a changé de liste
 
@@ -183,57 +348,87 @@ export async function selectList(listId) {
 
   // Souscrire items
   itemsSubscription = supabase.channel(`items_${listId}_${uniqueSuffix}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `list_id=eq.${listId}` }, (payload) => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'items', filter: `list_id=eq.${listId}` }, (payload) => {
       items.update(current => {
-        if (payload.eventType === 'INSERT') return [payload.new, ...current];
-        if (payload.eventType === 'UPDATE') return current.map(i => i.id === payload.new.id ? payload.new : i);
-        if (payload.eventType === 'DELETE') return current.filter(i => i.id !== payload.old.id);
-        return current;
+        if (current.find(i => i.id === payload.new.id)) {
+          return current.map(i => i.id === payload.new.id ? payload.new : i);
+        }
+        return [payload.new, ...current];
       });
-    }).subscribe();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'items', filter: `list_id=eq.${listId}` }, (payload) => {
+      items.update(current => current.map(i => i.id === payload.new.id ? payload.new : i));
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'items' }, (payload) => {
+      items.update(current => current.filter(i => i.id !== payload.old.id));
+    })
+    .subscribe();
 
   // Souscrire meals
   mealsSubscription = supabase.channel(`meals_${listId}_${uniqueSuffix}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'meals', filter: `list_id=eq.${listId}` }, (payload) => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'meals', filter: `list_id=eq.${listId}` }, (payload) => {
       syncMeals.update(current => {
         const safeNew = { ...payload.new, ingredients: payload.new?.ingredients || [] };
-        if (payload.eventType === 'INSERT') {
-          if (current.find(m => m.id === safeNew.id)) {
-            return current.map(m => m.id === safeNew.id ? safeNew : m);
-          }
-          return [safeNew, ...current];
+        if (current.find(m => m.id === safeNew.id)) {
+          return current.map(m => m.id === safeNew.id ? safeNew : m);
         }
-        if (payload.eventType === 'UPDATE') return current.map(m => m.id === safeNew.id ? safeNew : m);
-        if (payload.eventType === 'DELETE') return current.filter(m => m.id !== payload.old.id);
-        return current;
+        return [safeNew, ...current];
       });
-    }).subscribe();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'meals', filter: `list_id=eq.${listId}` }, (payload) => {
+      syncMeals.update(current => {
+        const safeNew = { ...payload.new, ingredients: payload.new?.ingredients || [] };
+        return current.map(m => m.id === safeNew.id ? safeNew : m);
+      });
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'meals' }, (payload) => {
+      syncMeals.update(current => current.filter(m => m.id !== payload.old.id));
+    })
+    .subscribe();
 
   // Souscrire planning
   planningSubscription = supabase.channel(`planning_${listId}_${uniqueSuffix}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'planning', filter: `list_id=eq.${listId}` }, (payload) => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'planning', filter: `list_id=eq.${listId}` }, (payload) => {
       syncPlanning.update(current => {
         const copy = { ...current };
-        if (payload.eventType === 'DELETE') {
-           const dateKey = Object.keys(copy).find(d => copy[d].id === payload.old.id);
-           if (dateKey) {
-             delete copy[dateKey];
-           } else {
-             reloadPlanning(listId);
-           }
+        copy[payload.new.date] = {
+          id: payload.new.id,
+          date: payload.new.date,
+          lunch: payload.new.lunch,
+          dinner: payload.new.dinner,
+          lunchExcluded: payload.new.lunch_excluded || [],
+          dinnerExcluded: payload.new.dinner_excluded || []
+        };
+        return copy;
+      });
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'planning', filter: `list_id=eq.${listId}` }, (payload) => {
+      syncPlanning.update(current => {
+        const copy = { ...current };
+        copy[payload.new.date] = {
+          id: payload.new.id,
+          date: payload.new.date,
+          lunch: payload.new.lunch,
+          dinner: payload.new.dinner,
+          lunchExcluded: payload.new.lunch_excluded || [],
+          dinnerExcluded: payload.new.dinner_excluded || []
+        };
+        return copy;
+      });
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'planning' }, (payload) => {
+      syncPlanning.update(current => {
+        const copy = { ...current };
+        const dateKey = Object.keys(copy).find(d => copy[d].id === payload.old.id);
+        if (dateKey) {
+          delete copy[dateKey];
         } else {
-           copy[payload.new.date] = {
-             id: payload.new.id,
-             date: payload.new.date,
-             lunch: payload.new.lunch,
-             dinner: payload.new.dinner,
-             lunchExcluded: payload.new.lunch_excluded || [],
-             dinnerExcluded: payload.new.dinner_excluded || []
-           };
+          reloadPlanning(listId);
         }
         return copy;
       });
-    }).subscribe();
+    })
+    .subscribe();
 }
 
 async function reloadPlanning(listId) {
@@ -256,96 +451,283 @@ async function reloadPlanning(listId) {
 
 
 // Ajouter, cocher, modifier, supprimer un article
-export async function addItem(id, name, category, quantity, unit, linkedMeals) {
+export async function addItem(idOrObj: any, name?: string, category?: string, quantity?: number, unit?: string, linkedMeals?: string[]) {
+  let id = idOrObj;
+  let isBought = false;
+  if (typeof idOrObj === 'object' && idOrObj !== null) {
+    id = idOrObj.id;
+    name = idOrObj.name;
+    category = idOrObj.category;
+    quantity = idOrObj.quantity;
+    unit = idOrObj.unit;
+    linkedMeals = idOrObj.linkedMeals || idOrObj.linked_meals;
+    isBought = idOrObj.isBought || idOrObj.is_bought || false;
+  }
   if (!id) id = crypto.randomUUID(); // Fallback backward compatibility
   const listId = get(currentListId);
+  
+  const dbItem = { id, list_id: listId, name, category, quantity, unit, linked_meals: linkedMeals, is_bought: isBought };
+  
+  // Update optimistically
+  items.update(current => [dbItem, ...current]);
+
+  // Only sync if we have a list selected
   if (!listId) return;
-  const dbItem = { id, list_id: listId, name, category, quantity, unit, linked_meals: linkedMeals, is_bought: false };
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('items').insert([dbItem]);
+    if (error) {
+      if (error.message === 'Failed to fetch' || String(error).includes('fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        throw error;
+      }
+      console.error("DB Error:", error);
+      return;
+    }
+  } catch (err) {
     addToOfflineQueue({ table: 'items', operation: 'insert', payload: dbItem, match: null });
-    return;
   }
-  await supabase.from('items').insert([dbItem]);
 }
 
 export async function updateItem(id, updates) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // Update optimistically
+  items.update(current => current.map(item => item.id === id ? { ...item, ...updates } : item));
+
+  const listId = get(currentListId);
+  if (!listId) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('items').update(updates).eq('id', id);
+    if (error) {
+      if (error.message === 'Failed to fetch' || String(error).includes('fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        throw error;
+      }
+      console.error("DB Error:", error);
+      return;
+    }
+  } catch (err) {
     addToOfflineQueue({ table: 'items', operation: 'update', payload: updates, match: { id } });
-    return;
   }
-  await supabase.from('items').update(updates).eq('id', id);
 }
 
 export async function toggleItem(id, is_bought) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // Update optimistically
+  items.update(current => current.map(item => item.id === id ? { ...item, is_bought } : item));
+
+  const listId = get(currentListId);
+  if (!listId) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('items').update({ is_bought }).eq('id', id);
+    if (error) {
+      if (error.message === 'Failed to fetch' || String(error).includes('fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        throw error;
+      }
+      console.error("DB Error:", error);
+      return;
+    }
+  } catch (err) {
     addToOfflineQueue({ table: 'items', operation: 'update', payload: { is_bought }, match: { id } });
-    return;
   }
-  await supabase.from('items').update({ is_bought }).eq('id', id);
 }
 
 export async function deleteItem(id) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // Update optimistically
+  items.update(current => current.filter(item => item.id !== id));
+
+  const listId = get(currentListId);
+  if (!listId) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('items').delete().eq('id', id);
+    if (error) {
+      if (error.message === 'Failed to fetch' || String(error).includes('fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        throw error;
+      }
+      console.error("DB Error:", error);
+      return;
+    }
+  } catch (err) {
     addToOfflineQueue({ table: 'items', operation: 'delete', payload: null, match: { id } });
-    return;
   }
-  await supabase.from('items').delete().eq('id', id);
 }
 
 export async function saveItems(itemsArray) {
-  // Pour le traitement en masse (comme `saveIngredients`), bien qu'en temps réel on puisse faire des requêtes individuelles.
   const listId = get(currentListId);
-  if (!listId) return;
-  // Nettoyer les items existants et les remplacer (simplifié) n'est pas idéal,
-  // donc pour éviter la perte de données, on va juste faire des upserts ou on ignore pour l'instant.
-  // Dans le code, Store.saveIngredients() est appelé principalement pour l'ajout en masse des repas.
+
+  const payloads = [];
   for (const item of itemsArray) {
     if (item.id) {
-       await supabase.from('items').upsert({
+       payloads.push({
          id: item.id,
          list_id: listId,
          name: item.name,
          category: item.category,
          quantity: item.quantity,
          unit: item.unit,
-         linked_meals: item.linkedMeals,
+         linked_meals: item.linkedMeals ?? item.linked_meals,
          is_bought: item.isBought ?? item.is_bought
        });
+    }
+  }
+
+  if (payloads.length > 0) {
+    // Optimistic update
+    items.update((current) => {
+      const map = new Map(current.map(i => [i.id, i]));
+      for (const p of payloads) {
+        map.set(p.id, { ...map.get(p.id), ...p });
+      }
+      return Array.from(map.values());
+    });
+
+    if (!listId) return;
+
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+      const { error } = await supabase.from('items').upsert(payloads);
+      if (error) {
+        if (error.message === 'Failed to fetch' || String(error).includes('fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          throw error;
+        }
+        console.error("DB Error in upsert:", error);
+      }
+    } catch (err) {
+      for (const p of payloads) {
+        addToOfflineQueue({ table: 'items', operation: 'upsert', payload: p, match: null });
+      }
     }
   }
 }
 
 // --- Repas & Planning ---
 export async function addMealToSync(meal) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    addToOfflineQueue({ table: 'meals', operation: 'insert', payload: meal, match: null });
-    return;
+  const listId = get(currentListId);
+
+  const payload = { 
+    ...meal, 
+    list_id: listId,
+    created_at: new Date(meal.createdAt || Date.now()).toISOString(),
+    is_favorite: meal.isFavorite || false
+  };
+  
+  // Optimistic UI Update
+  syncMeals.update(current => [{ ...payload, ingredients: payload.ingredients || [] }, ...current]);
+
+  if (!listId) return;
+
+  delete payload.createdAt;
+  delete payload.isFavorite;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('meals').insert([payload]);
+    if (error) {
+      if (error.message === 'Failed to fetch') throw error;
+      console.error('Error inserting meal:', error);
+    }
+  } catch (err) {
+    addToOfflineQueue({ table: 'meals', operation: 'insert', payload, match: null });
   }
-  const { error } = await supabase.from('meals').insert([meal]);
-  if (error) console.error('Error inserting meal:', error);
 }
 
 export async function updateMealInSync(id, updates) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    addToOfflineQueue({ table: 'meals', operation: 'update', payload: updates, match: { id } });
-    return;
+  const payload = { ...updates };
+  if (payload.createdAt !== undefined) {
+    payload.created_at = new Date(payload.createdAt).toISOString();
+    delete payload.createdAt;
   }
-  const { error } = await supabase.from('meals').update(updates).eq('id', id);
-  if (error) console.error('Error updating meal:', error);
+  if (payload.isFavorite !== undefined) {
+    payload.is_favorite = payload.isFavorite;
+    delete payload.isFavorite;
+  }
+
+  // Optimistic UI Update
+  syncMeals.update(current => current.map(m => m.id === id ? { ...m, ...payload } : m));
+
+  const listId = get(currentListId);
+  if (!listId) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('meals').update(payload).eq('id', id);
+    if (error) {
+      if (error.message === 'Failed to fetch') throw error;
+      console.error('Error updating meal:', error);
+    }
+  } catch (err) {
+    addToOfflineQueue({ table: 'meals', operation: 'update', payload, match: { id } });
+  }
 }
 
 export async function deleteMealFromSync(id) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    addToOfflineQueue({ table: 'meals', operation: 'delete', payload: null, match: { id } });
-    return;
+  const currentMeals = get(syncMeals);
+  const mealToDelete = currentMeals.find(m => m.id === id);
+  const mealName = mealToDelete?.name;
+
+  // Optimistic update
+  syncMeals.update(current => current.filter(m => m.id !== id));
+
+  // Clean up planning references to this meal
+  const currentPlan = get(syncPlanning);
+  for (const dateStr in currentPlan) {
+    const plannedDay = currentPlan[dateStr];
+    let needsUpdate = false;
+    const updates: any = {};
+    
+    if (plannedDay.lunch === id) {
+      updates.lunch = null;
+      needsUpdate = true;
+    }
+    if (plannedDay.dinner === id) {
+      updates.dinner = null;
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      await updatePlannedDayInSync(dateStr, updates);
+    }
   }
-  const { error } = await supabase.from('meals').delete().eq('id', id);
-  if (error) console.error('Error deleting meal:', error);
+
+  // Clean up the meal references in items list
+  if (mealName) {
+    const currentItems = get(items);
+    const updatedItems = [];
+    for (const item of currentItems) {
+      const linked = item.linked_meals || item.linkedMeals || [];
+      if (linked.includes(mealName)) {
+        updatedItems.push({
+          ...item,
+          linkedMeals: linked.filter(n => n !== mealName),
+          linked_meals: linked.filter(n => n !== mealName)
+        });
+      }
+    }
+    if (updatedItems.length > 0) {
+      await saveItems(updatedItems);
+    }
+  }
+
+  const listId = get(currentListId);
+  if (!listId) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('meals').delete().eq('id', id);
+    if (error) {
+      if (error.message === 'Failed to fetch') throw error;
+      console.error('Error deleting meal:', error);
+    }
+  } catch (err) {
+    addToOfflineQueue({ table: 'meals', operation: 'delete', payload: null, match: { id } });
+  }
 }
 
 export async function updatePlannedDayInSync(date, updates) {
   const listId = get(currentListId);
-  if (!listId) return;
 
   const currentPlan = get(syncPlanning);
   const existingId = currentPlan[date]?.id;
@@ -372,11 +754,18 @@ export async function updatePlannedDayInSync(date, updates) {
      }
   }));
 
-  const { error } = await supabase.from('planning').upsert(payload, { onConflict: 'list_id,date' });
-  if (error) {
-    console.error('Error upserting planning:', error);
-    // If it fails, fallback by reloading since local state might be out of sync
-    reloadPlanning(listId);
+  if (!listId) return;
+
+  try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new TypeError('Failed to fetch');
+    const { error } = await supabase.from('planning').upsert(payload, { onConflict: 'list_id,date' });
+    if (error) {
+      if (error.message === 'Failed to fetch') throw error;
+      console.error('Error upserting planning:', error);
+      reloadPlanning(listId);
+    }
+  } catch (err) {
+    addToOfflineQueue({ table: 'planning', operation: 'upsert', payload, match: null });
   }
 }
 
