@@ -1,10 +1,10 @@
 <script lang="ts">
   import '../app.css';
   import { ShoppingCart, Utensils, CalendarDays } from 'lucide-svelte';
-  import NavListsTab from '$lib/components/NavListsTab.svelte';
+  import NavListsTab from '$lib/components/layout/NavListsTab.svelte';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { initSync } from '$lib/shoppingSyncStore';
+  import { initSync } from '$lib/store/shopping';
   import { Toaster } from "$lib/components/ui/sonner";
 
   let { children } = $props();

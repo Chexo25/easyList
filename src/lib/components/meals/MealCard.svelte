@@ -1,16 +1,16 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
   import { v4 as uuidv4 } from 'uuid';
-  import { updateMealInSync, items as syncItems, addItem } from '$lib/shoppingSyncStore';
-  import type { Meal, MealIngredient } from '$lib/types';
+  import { updateMealInSync, items as syncItems, addItem } from '$lib/store/shopping';
+  import type { Meal, MealIngredient, Item } from '$lib/types';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { Label } from '$lib/components/ui/label';
   import * as Dialog from '$lib/components/ui/dialog';
   import { Trash2, Plus, ShoppingCart, ChevronDown, ChevronUp, Check, Star, Pencil } from 'lucide-svelte';
-  import { categories as defaultCategories } from '$lib/categories';
-  import { searchLocalProducts, type Product as OFFProduct } from '$lib/productsDb';
+  import { categories as defaultCategories } from '$lib/data/categories';
+  import { searchLocalProducts, type Product } from '$lib/data/products';
 
   let { meal = $bindable(), onDelete, onAddToCart } = $props<{
     meal: Meal;
@@ -22,18 +22,18 @@
 
   let addName = $state('');
   let addCategory = $state('');
-  let addQty = $state<number | undefined>();
+  let addQty: number | undefined = $state();
   let addUnit = $state('');
-  let isExpanded = $state(true); // By default, show ingredients of the meal
-  
-  let editingIngredient = $state<MealIngredient | null>(null);
+  let isExpanded = $state(true);
+
+  let editingIngredient: MealIngredient | null = $state(null);
   let editCategory = $state('');
-  let editQty = $state<number | undefined>();
+  let editQty: number | undefined = $state();
   let editUnit = $state('');
   let showEditCategorySuggestions = $state(false);
 
   let filteredEditCategories = $derived(
-    editCategory.trim() 
+    editCategory.trim()
       ? defaultCategories.filter(c => c.toLowerCase().includes(editCategory.toLowerCase()))
       : defaultCategories
   );
@@ -46,37 +46,35 @@
   function openEdit(ing: MealIngredient) {
     editingIngredient = ing;
     editCategory = ing.category || 'Autre';
-    editQty = ing.quantity;
+    editQty = ing.quantity ?? undefined;
     editUnit = ing.unit || '';
   }
 
   async function saveEdit() {
     if (!editingIngredient) return;
-    meal.ingredients = meal.ingredients.map((i: MealIngredient) => {
-      if (i.id === editingIngredient!.id) {
-        return { ...i, category: editCategory || 'Autre', quantity: editQty, unit: editQty ? editUnit : '' };
-      }
-      return i;
-    });
+    meal.ingredients = meal.ingredients.map((i: MealIngredient) =>
+      i.id === editingIngredient!.id
+        ? { ...i, category: editCategory || 'Autre', quantity: editQty ?? null, unit: editQty ? editUnit : '' }
+        : i
+    );
     await updateMealInSync(meal.id, { ingredients: meal.ingredients });
     editingIngredient = null;
   }
 
   let showSuggestions = $state(false);
   let showCategorySuggestions = $state(false);
-  let apiProducts = $state<OFFProduct[]>([]);
+  let apiProducts = $state<Product[]>([]);
   let isLoadingApi = $state(false);
 
-  let knownProducts = $state<{name: string, category: string}[]>([]);
+  let knownProducts = $state<{ name: string; category: string }[]>([]);
 
   $effect(() => {
-    const all = $syncItems || [];
+    const all: Item[] = get(syncItems) || [];
     knownProducts = Array.from(
-      new Map(all.map((i: any) => [i.name.toLowerCase(), { name: i.name, category: i.category }])).values()
+      new Map(all.map(i => [i.name.toLowerCase(), { name: i.name, category: i.category }])).values()
     );
   });
 
-  // Debounced API call for local products database
   $effect(() => {
     const q = addName.trim();
     if (q.length < 2) {
@@ -84,19 +82,15 @@
       isLoadingApi = false;
       return;
     }
-    
-    // Instead of resolving immediately, we debounce properly and return a cleanup function
-    const searchTimeout = setTimeout(async () => {
+    const timeout = setTimeout(async () => {
       isLoadingApi = true;
-        const res = await searchLocalProducts(q);
-      // Only update if input hasn't changed drastically
+      const res = await searchLocalProducts(q);
       if (addName.trim() === q) {
         apiProducts = res;
         isLoadingApi = false;
       }
     }, 400);
-
-    return () => clearTimeout(searchTimeout);
+    return () => clearTimeout(timeout);
   });
 
   let filteredProducts = $derived(
@@ -108,12 +102,12 @@
   );
 
   let filteredCategories = $derived(
-    addCategory.trim() 
+    addCategory.trim()
       ? defaultCategories.filter(c => c.toLowerCase().includes(addCategory.toLowerCase()))
       : defaultCategories
   );
 
-  async function selectProduct(product: { name: string, category: string }) {
+  async function selectProduct(product: { name: string; category: string }) {
     addName = product.name;
     addCategory = product.category;
     showSuggestions = false;
@@ -125,16 +119,12 @@
     showCategorySuggestions = false;
   }
 
-  let addNameInput = $state<HTMLInputElement | null>(null);
+  let addNameInput: HTMLInputElement | null = $state(null);
 
   let hasFocused = false;
   $effect(() => {
-    // Si le composant a l'input monté et que le repas vient d'être créé < 2 sec
-    if (addNameInput && !hasFocused && meal.createdAt && Date.now() - meal.createdAt < 2000) {
-      // Un setTimeout pour s'assurer que le blur du header a bien eu lieu
-      setTimeout(() => {
-        addNameInput?.focus();
-      }, 100);
+    if (addNameInput && !hasFocused && meal.createdAt && Date.now() - new Date(meal.createdAt).getTime() < 2000) {
+      setTimeout(() => addNameInput?.focus(), 100);
       hasFocused = true;
     }
   });
@@ -150,27 +140,25 @@
       id: uuidv4(),
       name: ingredientName,
       category: ingredientCategory,
-      quantity: addQty,
-      unit: addUnit.trim()
+      quantity: addQty ?? null,
+      unit: addUnit.trim(),
     };
 
     meal.ingredients = [...meal.ingredients, newIng];
     await updateMealInSync(meal.id, { ingredients: meal.ingredients });
 
-    const allIngredients = get(syncItems) || [];
-    const existing = allIngredients.find((i: any) => i.name.toLowerCase() === ingredientName.toLowerCase());
-    
+    const allIngredients: Item[] = get(syncItems) || [];
+    const existing = allIngredients.find(i => i.name.toLowerCase() === ingredientName.toLowerCase());
+
     if (!existing) {
       await addItem({
         id: uuidv4(),
         name: ingredientName,
         category: ingredientCategory,
-        isBought: true, // Prevent it from appearing in the active shopping list directly
-        createdAt: Date.now()
+        isBought: true,
       });
     }
-    
-    // Reset local fields
+
     addName = '';
     addCategory = '';
     addQty = undefined;
@@ -188,15 +176,14 @@
 <div class="bg-card border rounded-2xl shadow-sm p-4 space-y-3 relative group {meal.isFavorite ? 'border-primary/50 bg-primary/5' : ''}">
   <div class="flex flex-col gap-2">
     <div class="flex justify-between items-start gap-4">
-      <!-- Meal title editable inline -->
       <div class="flex-1 flex flex-col items-start gap-1">
-        <input 
-          type="text" 
-          bind:value={meal.name} 
-          onchange={() => updateMealInSync(meal.id, { name: meal.name })} 
-          class="font-bold text-lg bg-transparent border-none outline-none focus:ring-0 w-full p-0" 
+        <input
+          type="text"
+          bind:value={meal.name}
+          onchange={() => updateMealInSync(meal.id, { name: meal.name })}
+          class="font-bold text-lg bg-transparent border-none outline-none focus:ring-0 w-full p-0"
         />
-        <button 
+        <button
           class="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground no-underline"
           onclick={() => isExpanded = !isExpanded}
         >
@@ -208,11 +195,10 @@
           {/if}
         </button>
       </div>
-      
-      <!-- Action buttons -->
+
       <div class="flex gap-1 shrink-0">
-        <button 
-          class="p-2 rounded-full transition-colors {meal.isFavorite ? 'text-yellow-500 hover:bg-yellow-500/10' : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10'}" 
+        <button
+          class="p-2 rounded-full transition-colors {meal.isFavorite ? 'text-yellow-500 hover:bg-yellow-500/10' : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10'}"
           onclick={() => { meal.isFavorite = !meal.isFavorite; updateMealInSync(meal.id, { isFavorite: meal.isFavorite }); }}
           title={meal.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
         >
@@ -228,11 +214,11 @@
     </div>
     <div class="flex flex-wrap gap-1">
       {#each typeOptions as tOpt}
-        <button 
+        <button
           class="text-[10px] px-2 py-0.5 rounded-md transition-colors border {meal.type === tOpt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground hover:bg-primary/20'}"
-          onclick={() => { 
-            meal.type = meal.type === tOpt ? undefined : tOpt; 
-            updateMealInSync(meal.id, { type: meal.type }); 
+          onclick={() => {
+            meal.type = meal.type === tOpt ? undefined : tOpt;
+            updateMealInSync(meal.id, { type: meal.type });
           }}
         >
           {tOpt}
@@ -243,7 +229,6 @@
 
   {#if isExpanded}
     <div class="space-y-3 pt-2">
-      <!-- Ingredients list -->
       <div class="space-y-2">
         {#each meal.ingredients as ing}
           <div class="flex items-center justify-between bg-muted/30 p-2 rounded-lg text-sm transition-colors hover:bg-muted/50">
@@ -266,28 +251,13 @@
         {/each}
       </div>
 
-      <!-- Quick Add Ingredient Form -->
       <form onsubmit={handleAddIngredient} class="flex flex-col gap-2 pt-2 border-t border-border/50 relative">
         <div class="flex gap-2 relative">
           <div class="flex-1 relative">
-            <Input 
-              bind:ref={addNameInput}
-              bind:value={addName} 
-              onfocus={() => showSuggestions = true}
-              placeholder="Ingredient (ex: Tomates)" 
-              class="w-full h-10 rounded-lg text-sm focus:ring-1" 
-              required 
-              autocomplete="off"
-            />
+            <Input bind:ref={addNameInput} bind:value={addName} onfocus={() => showSuggestions = true} placeholder="Ingredient (ex: Tomates)" class="w-full h-10 rounded-lg text-sm focus:ring-1" required autocomplete="off" />
           </div>
           <div class="w-1/3 relative">
-            <Input 
-              bind:value={addCategory} 
-              onfocus={() => showCategorySuggestions = true}
-              placeholder="Rayon" 
-              class="w-full h-10 rounded-lg text-sm" 
-              autocomplete="off"
-            />
+            <Input bind:value={addCategory} onfocus={() => showCategorySuggestions = true} placeholder="Rayon" class="w-full h-10 rounded-lg text-sm" autocomplete="off" />
             {#if showCategorySuggestions}
               <div class="absolute right-0 left-[-100px] bottom-full mb-1 bg-card border rounded-xl shadow-lg z-40 overflow-hidden max-h-48 overflow-y-auto">
                 {#if filteredCategories.length === 0}
@@ -309,8 +279,6 @@
 
         {#if showSuggestions && addName.trim().length > 0}
           <div class="absolute left-0 right-0 bottom-full mb-1 bg-card border rounded-xl shadow-lg z-30 overflow-hidden max-h-48 overflow-y-auto">
-            
-            <!-- Option de création rapide si le nom n'existe pas exactement -->
             {#if !knownProducts.some(p => p.name.toLowerCase() === addName.trim().toLowerCase())}
               <button type="button" class="w-full text-left px-3 py-2 hover:bg-muted transition-colors flex items-center gap-2 border-b border-border/50 bg-primary/5 text-primary" onclick={() => handleAddIngredient()}>
                 <Plus class="w-4 h-4" />
@@ -359,19 +327,8 @@
         {/if}
 
         <div class="flex gap-2">
-          <Input 
-            type="number" 
-            bind:value={addQty} 
-            min="0.1" 
-            step="0.1"
-            placeholder="Qté" 
-            class="w-1/3 h-10 rounded-lg text-sm text-center" 
-          />
-          <Input 
-            bind:value={addUnit} 
-            placeholder="Unité (g, kg..)" 
-            class="flex-1 h-10 rounded-lg text-sm" 
-          />
+          <Input type="number" bind:value={addQty} min="0.1" step="0.1" placeholder="Qté" class="w-1/3 h-10 rounded-lg text-sm text-center" />
+          <Input bind:value={addUnit} placeholder="Unité (g, kg..)" class="flex-1 h-10 rounded-lg text-sm" />
           <Button type="submit" size="icon" class="h-10 w-10 rounded-lg shrink-0" onclick={() => showSuggestions = false}>
             <Plus class="w-5 h-5" />
           </Button>
@@ -389,24 +346,14 @@
     <div class="space-y-4 pt-4">
       <div class="space-y-2 relative">
         <Label>Rayon / Catégorie</Label>
-        <Input 
-          bind:value={editCategory} 
-          placeholder="Ex: Fruits & Légumes" 
-          onfocus={() => showEditCategorySuggestions = true}
-          onblur={() => setTimeout(() => showEditCategorySuggestions = false, 200)}
-          autocomplete="off"
-        />
+        <Input bind:value={editCategory} placeholder="Ex: Fruits & Légumes" onfocus={() => showEditCategorySuggestions = true} onblur={() => setTimeout(() => showEditCategorySuggestions = false, 200)} autocomplete="off" />
         {#if showEditCategorySuggestions}
-            <div class="absolute left-0 right-0 bottom-[60px] mb-1 bg-card border rounded-xl shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
+          <div class="absolute left-0 right-0 bottom-[60px] mb-1 bg-card border rounded-xl shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
             {#if filteredEditCategories.length === 0}
               <div class="px-3 py-2 text-sm text-muted-foreground text-center">Nouveau rayon...</div>
             {:else}
               {#each filteredEditCategories as cat}
-                <button 
-                  type="button" 
-                  class="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors text-sm border-b border-border/50 last:border-0 flex items-center justify-between" 
-                  onclick={() => selectEditCategory(cat)}
-                >
+                <button type="button" class="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors text-sm border-b border-border/50 last:border-0 flex items-center justify-between" onclick={() => selectEditCategory(cat)}>
                   {cat}
                   {#if cat === editCategory}
                     <Check class="w-3.5 h-3.5 text-primary" />

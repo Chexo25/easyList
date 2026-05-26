@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "lint": "biome check --write src/",
+    "format": "biome format --write src/",
     "tauri": "tauri"
   },
   "license": "MIT",
@@ -18,10 +20,11 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-store": "^2.4.2",
     "lucide-svelte": "^1.0.1",
-    "supabase-js": "^0.0.1-security",
+    "minisearch": "^7.2.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@fontsource-variable/inter": "^5.2.8",
     "@internationalized/date": "^3.12.0",
     "@lucide/svelte": "^1.8.0",
