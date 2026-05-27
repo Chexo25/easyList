@@ -160,7 +160,7 @@
       </div>
     {:else}
       {#each displayedMeals as meal (meal.id)}
-        <MealCard bind:meal={meals[meals.findIndex(m => m.id === meal.id)]} onDelete={deleteMeal} onAddToCart={addMealToShopping} />
+        <MealCard {meal} onDelete={deleteMeal} onAddToCart={addMealToShopping} />
       {/each}
     {/if}
   </main>
