@@ -12,11 +12,18 @@
   let meals = $state<Meal[]>([]);
   $effect(() => {
     const unsub = syncMeals.subscribe(val => {
-      meals = val.map(m => ({
-        ...m,
-        ingredients: m.ingredients || [],
-        isFavorite: m.isFavorite ?? false,
-      }));
+      const seen = new Set();
+      meals = (val || [])
+        .filter(m => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        })
+        .map(m => ({
+          ...m,
+          ingredients: m.ingredients || [],
+          isFavorite: m.isFavorite ?? false,
+        }));
     });
     return unsub;
   });
@@ -49,7 +56,6 @@
       type: null,
     };
 
-    meals = [newMeal, ...meals];
     newMealName = '';
 
     if (document.activeElement instanceof HTMLElement) {
@@ -65,7 +71,7 @@
   }
 
   async function addMealToShopping(meal: Meal) {
-    const currentShopping: Item[] = get(syncItems).map(i => ({ ...i }));
+    const currentShopping: Item[] = (get(syncItems) || []).map(i => ({ ...i }));
     const toSave: Item[] = [...currentShopping];
 
     for (const ming of meal.ingredients) {

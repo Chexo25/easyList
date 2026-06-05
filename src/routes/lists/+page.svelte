@@ -18,7 +18,7 @@
   let errValue: string | null = $state(null);
   let userValue = $state<unknown>(null);
 
-  const unsubscribeLists = lists.subscribe(val => listsValue = val);
+  const unsubscribeLists = lists.subscribe(val => listsValue = val || []);
   const unsubscribeCurrent = currentListId.subscribe(val => currentListIdValue = val);
   const unsubscribeErr = syncError.subscribe(val => errValue = val);
   const unsubscribeUser = currentUser.subscribe(val => userValue = val);

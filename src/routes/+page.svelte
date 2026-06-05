@@ -32,7 +32,7 @@
       const ls = get(lists);
       currentListName = (ls || []).find(l => l?.id === id)?.name || '';
     });
-    const unsub5 = syncItems.subscribe(val => { items = val; });
+    const unsub5 = syncItems.subscribe(val => { items = val || []; });
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
   });
 

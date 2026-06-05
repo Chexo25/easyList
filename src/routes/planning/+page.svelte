@@ -14,7 +14,7 @@
 
   $effect(() => {
     const unsubM = syncMeals.subscribe(val => {
-      meals = val.map(m => ({
+      meals = (val || []).map(m => ({
         ...m,
         ingredients: m.ingredients || [],
         isFavorite: m.isFavorite ?? false,
@@ -22,11 +22,12 @@
     });
     const unsubP = syncPlanning.subscribe(val => {
       const safe: Planning = {};
-      for (const key in val) {
+      const actualVal = val || {};
+      for (const key in actualVal) {
         safe[key] = {
-          ...val[key],
-          lunchExcluded: val[key].lunchExcluded || [],
-          dinnerExcluded: val[key].dinnerExcluded || [],
+          ...actualVal[key],
+          lunchExcluded: actualVal[key].lunchExcluded || [],
+          dinnerExcluded: actualVal[key].dinnerExcluded || [],
         };
       }
       planning = safe;

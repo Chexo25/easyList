@@ -12,7 +12,7 @@
   import { categories as defaultCategories } from '$lib/data/categories';
   import { searchLocalProducts, type Product } from '$lib/data/products';
 
-  let { meal = $bindable(), onDelete, onAddToCart } = $props<{
+  let { meal, onDelete, onAddToCart } = $props<{
     meal: Meal;
     onDelete: (id: string) => void;
     onAddToCart: (meal: Meal) => void;

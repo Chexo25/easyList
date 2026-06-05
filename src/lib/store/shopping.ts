@@ -23,7 +23,10 @@ function persistStore<T>(store: ReturnType<typeof writable<T>>, key: string) {
   const cached = localStorage.getItem(key);
   if (cached) {
     try {
-      store.set(JSON.parse(cached));
+      const parsed = JSON.parse(cached);
+      if (parsed !== null && parsed !== undefined) {
+        store.set(parsed);
+      }
     } catch {
       console.error('Failed to parse localStorage key:', key);
     }
@@ -464,7 +467,10 @@ export async function saveItems(itemsArray: Item[]) {
 }
 
 export async function addMealToSync(meal: Meal) {
-  syncMeals.update((current) => [meal, ...current]);
+  syncMeals.update((current) => {
+    if (current.some(m => m.id === meal.id)) return current;
+    return [meal, ...current];
+  });
 
   const listId = get(currentListId);
   if (!listId) return;
