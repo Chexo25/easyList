@@ -83,6 +83,84 @@ body {
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+.ocean {
+  --background: oklch(96.39% 0.01211 248.162);
+  --foreground: oklch(0.20 0.02 240);
+
+  --card: oklch(0.995 0.005 240);
+  --card-foreground: oklch(0.20 0.02 240);
+
+  --popover: oklch(0.995 0.005 240);
+  --popover-foreground: oklch(0.20 0.02 240);
+
+  --primary: oklch(0.62 0.20 245);
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary: oklch(0.94 0.02 240);
+  --secondary-foreground: oklch(0.25 0.02 240);
+
+  --accent: oklch(0.91 0.04 230);
+  --accent-foreground: oklch(0.25 0.02 230);
+
+  --sidebar: oklch(0.97 0.01 240);
+  --sidebar-primary: oklch(0.62 0.20 245);
+  --sidebar-accent: oklch(0.92 0.03 235);
+
+  --ring: oklch(0.62 0.20 245);
+}
+
+.forest {
+  --background: oklch(97.188% 0.02187 145.64);
+  --foreground: oklch(0.20 0.02 145);
+
+  --card: oklch(0.995 0.006 145);
+  --card-foreground: oklch(0.20 0.02 145);
+
+  --popover: oklch(0.995 0.006 145);
+  --popover-foreground: oklch(0.20 0.02 145);
+
+  --primary: oklch(0.58 0.16 145);
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary: oklch(0.94 0.02 145);
+  --secondary-foreground: oklch(0.25 0.02 145);
+
+  --accent: oklch(0.90 0.03 135);
+  --accent-foreground: oklch(0.25 0.02 135);
+
+  --sidebar: oklch(0.97 0.01 145);
+  --sidebar-primary: oklch(0.58 0.16 145);
+  --sidebar-accent: oklch(0.92 0.02 140);
+
+  --ring: oklch(0.58 0.16 145);
+}
+
+.sunset {
+  --background: oklch(96.237% 0.0136 45.911);
+  --foreground: oklch(0.22 0.03 30);
+
+  --card: oklch(0.995 0.01 35);
+  --card-foreground: oklch(0.22 0.03 30);
+
+  --popover: oklch(0.995 0.01 35);
+  --popover-foreground: oklch(0.22 0.03 30);
+
+  --primary: oklch(0.68 0.21 35);
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary: oklch(0.95 0.02 35);
+  --secondary-foreground: oklch(0.25 0.03 35);
+
+  --accent: oklch(0.91 0.05 25);
+  --accent-foreground: oklch(0.25 0.03 25);
+
+  --sidebar: oklch(0.975 0.01 35);
+  --sidebar-primary: oklch(0.68 0.21 35);
+  --sidebar-accent: oklch(0.93 0.03 30);
+
+  --ring: oklch(0.68 0.21 35);
+}
+
 @theme inline {
 	--font-sans: 'Inter Variable', sans-serif;
 	--color-sidebar-ring: var(--sidebar-ring);
