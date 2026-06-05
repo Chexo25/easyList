@@ -3,19 +3,32 @@
   import { theme } from '$lib/store/theme';
   import { Switch } from '$lib/components/ui/switch';
   import { Moon, Sun } from 'lucide-svelte';
+
+  const themes = [
+    { id: 'default', label: 'Défaut', color: 'bg-gray-300' },
+    { id: 'ocean', label: 'Océan', color: 'bg-blue-500' },
+    { id: 'forest', label: 'Cornichon', color: 'bg-green-500' },
+    { id: 'sunset', label: 'Sunset', color: 'bg-orange-400' },
+    { id: 'pink', label: 'Rose', color: 'bg-red-400' },
+    { id: 'violet', label: 'Lila', color: 'bg-purple-500' }
+  ];
 </script>
 
 <div class="p-4 space-y-6">
 
   <!-- DARK MODE SWITCH -->
-  <div class="flex items-center justify-between">
+  <div class="flex items-center justify-between border rounded-xl p-4">
+
     <div class="flex items-center gap-2">
       {#if $mode === 'dark'}
         <Moon class="w-4 h-4" />
       {:else}
         <Sun class="w-4 h-4" />
       {/if}
-      <span>{ $mode === 'dark' ? 'Mode sombre' : 'Mode clair' }</span>    
+
+      <span>
+        { $mode === 'dark' ? 'Mode sombre' : 'Mode clair' }
+      </span>
     </div>
 
     <Switch
@@ -24,27 +37,49 @@
     />
   </div>
 
-  <!-- THEMES -->
-  <div class="space-y-2">
+  <!-- THEME SELECTOR -->
+  <div class="space-y-3">
+
     <p class="text-sm font-semibold text-muted-foreground">
       Thème couleur
     </p>
 
-    <button on:click={() => theme.set('default')} class="border p-3 rounded-xl w-full text-left">
-      Default
-    </button>
+    <div class="flex flex-wrap gap-3">
 
-    <button on:click={() => theme.set('ocean')} class="border p-3 rounded-xl w-full text-left">
-      Ocean
-    </button>
+      {#each themes as t}
+        <button
+          on:click={() => theme.set(t.id)}
+          class="
+            flex items-center gap-2 px-3 py-2 rounded-full border
+            transition hover:bg-muted/40
+            {$theme === t.id ? 'border-primary bg-muted/40' : 'border-border'}
+          "
+        >
 
-    <button on:click={() => theme.set('forest')} class="border p-3 rounded-xl w-full text-left">
-      Forest
-    </button>
+          <!-- color dot -->
+          <span class={`w-3 h-3 rounded-full ${t.color}`} />
 
-    <button on:click={() => theme.set('sunset')} class="border p-3 rounded-xl w-full text-left">
-      Sunset
-    </button>
+          <!-- label -->
+          <span class="text-sm">{t.label}</span>
+
+          <!-- active indicator -->
+          {#if $theme === t.id}
+            <span class="w-2 h-2 rounded-full bg-primary ml-1"></span>
+          {/if}
+
+        </button>
+      {/each}
+
+    </div>
+
+  </div>
+
+  <!-- RAYONS ORDER -->
+  <div class="space-y-3">
+
+    <p class="text-sm font-semibold text-muted-foreground">
+      Ordre des rayons
+    </p>
   </div>
 
 </div>

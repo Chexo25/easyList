@@ -8,11 +8,29 @@
   import { Toaster } from "$lib/components/ui/sonner";
   import { mode } from '$lib/store/mode';
   import { theme } from '$lib/store/theme';
+  import { browser } from '$app/environment';
 
   let { children } = $props();
 
+  const themes = ['ocean', 'forest', 'sunset', 'red', 'violet'] as const;
+
+  theme.subscribe((value) => {
+    if (typeof document === 'undefined') return;
+
+    const root = document.documentElement;
+
+    themes.forEach((t) => {
+      root.classList.remove(`theme-${t}`);
+
+      document.documentElement.dataset.theme = value;
+    });
+
+    if (value !== 'default') {
+      root.classList.add(`theme-${value}`);
+    }
+  });
+
   onMount(() => {
-    // Initialise la session anonyme Supabase au démarrage de l'app
     initSync();
   });
 </script>

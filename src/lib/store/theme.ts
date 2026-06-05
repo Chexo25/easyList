@@ -1,34 +1,22 @@
 import { writable } from 'svelte/store';
 
+export type Theme = 'default' | 'ocean' | 'forest' | 'sunset' | 'violet' | 'rose';
+
 const STORAGE_KEY = 'app-theme';
 
-export type ColorTheme = 'default' | 'ocean' | 'forest' | 'sunset';
-
 function createThemeStore() {
-  const initial: ColorTheme =
-    typeof localStorage !== 'undefined'
-      ? (localStorage.getItem(STORAGE_KEY) as ColorTheme) || 'default'
-      : 'default';
+  const initial =
+    (typeof localStorage !== 'undefined'
+      ? (localStorage.getItem(STORAGE_KEY) as Theme)
+      : 'default') || 'default';
 
-  const { subscribe, set } = writable<ColorTheme>(initial);
+  const { subscribe, set } = writable<Theme>(initial);
 
   return {
     subscribe,
-    set: (value: ColorTheme) => {
-      if (typeof document !== 'undefined') {
-        document.documentElement.classList.remove(
-          'theme-ocean',
-          'theme-forest',
-          'theme-sunset'
-        );
 
-        if (value !== 'default') {
-          document.documentElement.classList.add(`theme-${value}`);
-        }
-
-        localStorage.setItem(STORAGE_KEY, value);
-      }
-
+    set: (value: Theme) => {
+      localStorage.setItem(STORAGE_KEY, value);
       set(value);
     }
   };
