@@ -1,11 +1,13 @@
 <script lang="ts">
   import '../app.css';
-  import { ShoppingCart, Utensils, CalendarDays, List } from 'lucide-svelte';
+  import { ShoppingCart, Utensils, CalendarDays, List, Settings } from 'lucide-svelte';
   import NavItem from '$lib/components/layout/NavItem.svelte';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { initSync } from '$lib/store/shopping';
   import { Toaster } from "$lib/components/ui/sonner";
+  import { mode } from '$lib/store/mode';
+  import { theme } from '$lib/store/theme';
 
   let { children } = $props();
 
@@ -25,9 +27,10 @@
     <!-- Navbar -->
     <nav class="shrink-0 w-full bg-background border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-50 flex justify-around items-center h-[4rem]">
       <NavItem href="/" text="Courses" icon={ShoppingCart} active={page.url.pathname === '/'} />
-      <NavItem href="/meals" text="Repas" icon={Utensils} active={page.url.pathname.startsWith('/meals')} />
-      <NavItem href="/planning" text="Planning" icon={CalendarDays} active={page.url.pathname.startsWith('/planning')} />
-      <NavItem href="/lists" text="Listes" icon={List} active={page.url.pathname.startsWith('/lists')} />
+      <NavItem href="/meals" text="Repas" icon={Utensils} active={page.url.pathname === '/meals'}/>
+      <NavItem href="/planning" text="Planning" icon={CalendarDays} active={page.url.pathname === '/planning'} />
+      <NavItem href="/lists" text="Listes" icon={List} active={page.url.pathname ==='/lists'} />
+      <NavItem href="/settings" text="Paramètres" icon={Settings} active={page.url.pathname ==='/settings'} />
     </nav>
   </main>
 </div>
