@@ -398,19 +398,29 @@ export async function addItem(item: Partial<Item>) {
   });
 }
 
-export async function updateItem(id: string, updates: Partial<Item>) {
-  items.update((current) => current.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+export async function updateItem(
+  id: string,
+  updates: Partial<Item>
+) {
+  await supabase
+    .from('items')
+    .update(itemToDbPartial(updates))
+    .eq('id', id);
+}
 
-  const listId = get(currentListId);
-  if (!listId) return;
+function itemToDbPartial(
+  updates: Partial<Item>
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
 
-  const dbPayload = itemToDb({ id, ...updates } as Item);
-  await dbOperation(() => supabase.from('items').update(dbPayload).eq('id', id), {
-    table: 'items',
-    operation: 'update',
-    payload: dbPayload,
-    match: { id },
-  });
+  if ('name' in updates) payload.name = updates.name;
+  if ('category' in updates) payload.category = updates.category;
+  if ('isBought' in updates) payload.is_bought = updates.isBought;
+  if ('quantity' in updates) payload.quantity = updates.quantity;
+  if ('unit' in updates) payload.unit = updates.unit;
+  if ('linkedMeals' in updates) payload.linked_meals = updates.linkedMeals;
+
+  return payload;
 }
 
 export async function toggleItem(id: string, isBought: boolean) {
