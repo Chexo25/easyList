@@ -1,6 +1,6 @@
 <script lang="ts">
   import { v4 as uuidv4 } from 'uuid';
-  import { syncMeals, addMealToSync, deleteMealFromSync, saveItems, items as syncItems } from '$lib/store/shopping';
+  import { syncMeals, addMealToSync, deleteMealFromSync, saveItems, currentListId, items as syncItems } from '$lib/store/shopping';
   import { get } from 'svelte/store';
   import { toast } from 'svelte-sonner';
   import type { Meal, Item } from '$lib/types';
@@ -46,21 +46,22 @@
     e.preventDefault();
     if (!newMealName.trim()) return;
 
-    const newMeal: Meal = {
-      id: uuidv4(),
-      listId: null,
+    const listId = get(currentListId);
+
+    if (!listId) {
+      console.error('No active list selected');
+      return;
+    }
+
+    const newMeal = {
+      id: crypto.randomUUID(),
+      listId,
       name: newMealName.trim(),
       ingredients: [],
       createdAt: new Date().toISOString(),
       isFavorite: false,
-      type: null,
+      type: 'default'
     };
-
-    newMealName = '';
-
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
 
     await addMealToSync(newMeal);
   }
@@ -102,7 +103,7 @@
         } else {
           toSave.push({
             id: uuidv4(),
-            listId: null,
+            listId: get(currentListId),
             name: ming.name,
             category: ming.category,
             isBought: false,

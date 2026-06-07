@@ -3,6 +3,10 @@
   import { theme } from '$lib/store/theme';
   import { Switch } from '$lib/components/ui/switch';
   import { Moon, Sun } from 'lucide-svelte';
+  import { items } from '$lib/store/shopping';
+  import { categoryOrder } from '$lib/store/categoryOrder';
+  import { Button } from '$lib/components/ui/button';
+  import { ArrowUp, ArrowDown } from 'lucide-svelte';
 
   const themes = [
     { id: 'default', label: 'Défaut', color: 'bg-gray-300' },
@@ -12,6 +16,57 @@
     { id: 'pink', label: 'Rose', color: 'bg-red-400' },
     { id: 'violet', label: 'Lila', color: 'bg-purple-500' }
   ];
+
+  let usedCategories = $derived(
+    Array.from(
+      new Set(
+        $items
+          .map(i => i.category)
+          .filter(Boolean)
+      )
+    ).sort()
+  );
+
+  function moveUp(index: number) {
+  categoryOrder.update(order => {
+    if (index === 0) return order;
+
+    const copy = [...order];
+
+    [copy[index - 1], copy[index]] =
+      [copy[index], copy[index - 1]];
+
+    return copy;
+  });
+  }
+
+function moveDown(index: number) {
+  categoryOrder.update(order => {
+    if (index >= order.length - 1) return order;
+
+    const copy = [...order];
+
+    [copy[index + 1], copy[index]] =
+      [copy[index], copy[index + 1]];
+
+    return copy;
+  });
+  }
+
+  $effect(() => {
+    const currentOrder = $categoryOrder;
+
+    const missing = usedCategories.filter(
+      c => !currentOrder.includes(c)
+    );
+
+    if (missing.length > 0) {
+      categoryOrder.set([
+        ...currentOrder,
+        ...missing
+      ]);
+    }
+  }); 
 </script>
 
 <div class="p-4 space-y-6">
@@ -48,7 +103,7 @@
 
       {#each themes as t}
         <button
-          on:click={() => theme.set(t.id)}
+          onclick={() => theme.set(t.id)}
           class="
             flex items-center gap-2 px-3 py-2 rounded-full border
             transition hover:bg-muted/40
@@ -77,9 +132,36 @@
   <!-- RAYONS ORDER -->
   <div class="space-y-3">
 
-    <p class="text-sm font-semibold text-muted-foreground">
-      Ordre des rayons
-    </p>
+  <p class="text-sm font-semibold text-muted-foreground">
+    Ordre des rayons
+  </p>
+
+  <div class="border rounded-xl divide-y">
+
+    {#each $categoryOrder as category, index}
+
+      <div class="flex items-center justify-between p-3">
+
+        <span>{category}</span>
+
+        <div class="flex gap-2">
+
+          <Button variant="outline" size="icon" onclick={() => moveUp(index)}>
+            <ArrowUp class="w-4 h-4" />
+          </Button>
+
+          <Button variant="outline" size="icon" onclick={() => moveDown(index)}>
+            <ArrowDown class="w-4 h-4" />
+          </Button>
+
+        </div>
+
+      </div>
+
+    {/each}
+
+  </div>
+
   </div>
 
 </div>

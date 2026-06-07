@@ -1,35 +1,46 @@
 import { writable } from 'svelte/store';
+import { browser } from '$app/environment';
 
-const STORAGE_KEY = 'category-order';
+const STORAGE_KEY = 'easylist-category-order';
 
-const defaultOrder = [
-  'Fruits & Légumes',
-  'Produits frais',
-  'Viandes & Poissons',
-  'Épicerie',
-  'Surgelés',
-  'Boissons',
-  'Hygiène',
-  'Autre'
-];
+function load(): string[] {
+  if (!browser) return [];
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function save(value: string[]) {
+  if (!browser) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+}
 
 function createCategoryOrderStore() {
-  const initial =
-    typeof localStorage !== 'undefined'
-      ? JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-      : null;
+  const store = writable<string[]>([]);
 
-  const { subscribe, set, update } = writable<string[]>(
-    initial || defaultOrder
-  );
+  if (browser) {
+    store.set(load());
+  }
 
   return {
-    subscribe,
+    subscribe: store.subscribe,
+
     set: (value: string[]) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-      set(value);
+      store.set(value);
+      save(value);
     },
-    reset: () => set(defaultOrder)
+
+    update: (fn: (v: string[]) => string[]) => {
+      store.update((current) => {
+        const next = fn(current);
+        save(next);
+        return next;
+      });
+    }
   };
 }
 

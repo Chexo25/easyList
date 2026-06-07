@@ -477,6 +477,7 @@ export async function saveItems(itemsArray: Item[]) {
 }
 
 export async function addMealToSync(meal: Meal) {
+  meal.listId = get(currentListId);
   syncMeals.update((current) => {
     if (current.some(m => m.id === meal.id)) return current;
     return [meal, ...current];
@@ -495,18 +496,37 @@ export async function addMealToSync(meal: Meal) {
 }
 
 export async function updateMealInSync(id: string, updates: Partial<Meal>) {
-  syncMeals.update((current) => current.map((m) => (m.id === id ? { ...m, ...updates } : m)));
-
   const listId = get(currentListId);
   if (!listId) return;
 
-  const dbPayload = mealToDb({ id, ...updates } as Meal);
-  await dbOperation(() => supabase.from('meals').update(dbPayload).eq('id', id), {
-    table: 'meals',
-    operation: 'update',
-    payload: dbPayload,
-    match: { id },
-  });
+  // 🔥 on récupère le meal COMPLET depuis le store
+  const current = get(syncMeals);
+  const meal = current.find(m => m.id === id);
+
+  if (!meal) return;
+
+  // 🔥 on merge correctement
+  const merged = {
+    ...meal,
+    ...updates,
+    listId
+  };
+
+  syncMeals.update((all) =>
+    all.map((m) => (m.id === id ? merged : m))
+  );
+
+  const dbPayload = mealToDb(merged);
+
+  await dbOperation(
+    () => supabase.from('meals').update(dbPayload).eq('id', id),
+    {
+      table: 'meals',
+      operation: 'update',
+      payload: dbPayload,
+      match: { id },
+    }
+  );
 }
 
 export async function deleteMealFromSync(id: string) {

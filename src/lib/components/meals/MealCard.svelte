@@ -144,8 +144,11 @@
       unit: addUnit.trim(),
     };
 
-    meal.ingredients = [...meal.ingredients, newIng];
-    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
+    const updated = [...meal.ingredients, newIng];
+
+    await updateMealInSync(meal.id, {
+      ingredients: updated
+    });
 
     const allIngredients: Item[] = get(syncItems) || [];
     const existing = allIngredients.find(i => i.name.toLowerCase() === ingredientName.toLowerCase());
@@ -168,8 +171,13 @@
   }
 
   async function removeIngredient(ingId: string) {
-    meal.ingredients = meal.ingredients.filter((i: MealIngredient) => i.id !== ingId);
-    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
+    const updated = localMeal.ingredients.filter((i: MealIngredient) => i.id !== ingId);
+
+    localMeal.ingredients = updated;
+
+    await updateMealInSync(localMeal.id, {
+      ingredients: updated
+    });
   }
 </script>
 
@@ -199,7 +207,10 @@
       <div class="flex gap-1 shrink-0">
         <button
           class="p-2 rounded-full transition-colors {meal.isFavorite ? 'text-yellow-500 hover:bg-yellow-500/10' : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10'}"
-          onclick={() => { meal.isFavorite = !meal.isFavorite; updateMealInSync(meal.id, { isFavorite: meal.isFavorite }); }}
+          onclick={() => {
+            localMeal.isFavorite = !localMeal.isFavorite;
+            updateMealInSync(localMeal.id, { isFavorite: localMeal.isFavorite });
+          }}
           title={meal.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
         >
           <Star class="w-4 h-4 {meal.isFavorite ? 'fill-current' : ''}" />
@@ -217,8 +228,8 @@
         <button
           class="text-[10px] px-2 py-0.5 rounded-md transition-colors border {meal.type === tOpt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground hover:bg-primary/20'}"
           onclick={() => {
-            meal.type = meal.type === tOpt ? undefined : tOpt;
-            updateMealInSync(meal.id, { type: meal.type });
+            localMeal.type = localMeal.type === tOpt ? undefined : tOpt;
+            updateMealInSync(localMeal.id, { type: localMeal.type });
           }}
         >
           {tOpt}

@@ -12,6 +12,7 @@
   import { ArrowUp, Trash2, Plus, Utensils, Check, Pencil } from 'lucide-svelte';
   import { categories as defaultCategories } from '$lib/data/categories';
   import { searchLocalProducts, type Product } from '$lib/data/products';
+  import { categoryOrder } from '$lib/store/categoryOrder';
   import type { Item, Meal } from '$lib/types';
 
   // --- State ---
@@ -254,12 +255,21 @@
   // --- Derived ---
 
   function sortByCategory(items: Item[]) {
+    const order = get(categoryOrder);
+
     return [...items].sort((a, b) => {
-      const catA = defaultCategories.indexOf(a.category);
-      const catB = defaultCategories.indexOf(b.category);
+
+      const catA = order.indexOf(a.category);
+      const catB = order.indexOf(b.category);
+
       const orderA = catA === -1 ? 999 : catA;
       const orderB = catB === -1 ? 999 : catB;
-      return orderA !== orderB ? orderA - orderB : a.name.localeCompare(b.name);
+
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      return a.name.localeCompare(b.name);
     });
   }
 
