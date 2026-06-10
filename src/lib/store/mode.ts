@@ -10,20 +10,44 @@ function createModeStore() {
       ? (localStorage.getItem(STORAGE_KEY) as Mode) || 'light'
       : 'light';
 
-  const { subscribe, set } = writable<Mode>(initial);
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle(
+      'dark',
+      initial === 'dark'
+    );
+  }
+
+  const { subscribe, set: internalSet } = writable<Mode>(initial);
 
   return {
     subscribe,
+
     set: (value: Mode) => {
       if (typeof document !== 'undefined') {
-        document.documentElement.classList.toggle('dark', value === 'dark');
-        localStorage.setItem(STORAGE_KEY, value);
+        document.documentElement.classList.toggle(
+          'dark',
+          value === 'dark'
+        );
       }
-      set(value);
+
+      localStorage.setItem(STORAGE_KEY, value);
+      internalSet(value);
     },
+
     toggle: () => {
-      const next = initial === 'dark' ? 'light' : 'dark';
-      set(next);
+      const current =
+        (localStorage.getItem(STORAGE_KEY) as Mode) || 'light';
+
+      const next: Mode =
+        current === 'dark' ? 'light' : 'dark';
+
+      document.documentElement.classList.toggle(
+        'dark',
+        next === 'dark'
+      );
+
+      localStorage.setItem(STORAGE_KEY, next);
+      internalSet(next);
     }
   };
 }

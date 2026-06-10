@@ -8,12 +8,16 @@
   import { Button } from '$lib/components/ui/button';
   import { ArrowUp, ArrowDown } from 'lucide-svelte';
 
-  const themes = [
+  const themes: {
+    id: theme;
+    label: string;
+    color: string;
+  }[] = [
     { id: 'default', label: 'Défaut', color: 'bg-gray-300' },
     { id: 'ocean', label: 'Océan', color: 'bg-blue-500' },
     { id: 'forest', label: 'Cornichon', color: 'bg-green-500' },
     { id: 'sunset', label: 'Sunset', color: 'bg-orange-400' },
-    { id: 'pink', label: 'Rose', color: 'bg-red-400' },
+    { id: 'rose', label: 'Rose', color: 'bg-red-400' },
     { id: 'violet', label: 'Lila', color: 'bg-purple-500' }
   ];
 

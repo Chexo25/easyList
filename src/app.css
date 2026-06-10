@@ -157,7 +157,6 @@ html[data-theme="rose"]{
   --popover: oklch(0.995 0.01 25);
   --popover-foreground: oklch(0.22 0.03 25);
 
-  --border: oklch(0.86 0.03 25);
   --ring: oklch(0.62 0.22 25);
 
   --sidebar: oklch(0.98 0.01 25);
@@ -179,7 +178,6 @@ html[data-theme="violet"] {
   --popover: oklch(0.995 0.01 300);
   --popover-foreground: oklch(0.22 0.03 300);
 
-  --border: oklch(0.86 0.03 300);
   --ring: oklch(0.62 0.20 295);
 
   --sidebar: oklch(0.98 0.01 300);

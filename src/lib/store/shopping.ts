@@ -4,10 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../db/supabase';
 import type { Item, Meal, PlannedDay, Planning, ShoppingList } from '../types';
 import { itemFromDb, itemToDb, mealFromDb, mealToDb, planningFromDb, planningToDb } from '../utils/transformers';
-import { addToOfflineQueue, processOfflineQueue } from './offline';
 
 export const currentUser = writable<User | null>(null);
-export const isNetworkOffline = writable(false);
 export const lists = writable<ShoppingList[]>([]);
 export const isListsLoaded = writable(false);
 export const currentListId = writable<string | null>(null);
@@ -15,6 +13,7 @@ export const items = writable<Item[]>([]);
 export const syncMeals = writable<Meal[]>([]);
 export const syncPlanning = writable<Planning>({});
 export const syncError = writable<string | null>(null);
+export const isNetworkOffline = writable(false);
 
 let currentSyncId = 0;
 
@@ -44,11 +43,11 @@ persistStore(syncPlanning, 'easyList_syncPlanning_cache');
 
 function monitorNetwork() {
   if (typeof window === 'undefined') return;
+
   isNetworkOffline.set(!navigator.onLine);
 
-  window.addEventListener('online', async () => {
+  window.addEventListener('online', () => {
     isNetworkOffline.set(false);
-    await processOfflineQueue();
   });
 
   window.addEventListener('offline', () => {
@@ -59,9 +58,6 @@ function monitorNetwork() {
 monitorNetwork();
 
 export async function initSync() {
-  if (typeof window !== 'undefined') {
-    await processOfflineQueue();
-  }
 
   const savedLists = get(lists);
   if (savedLists.length > 0) isListsLoaded.set(true);
@@ -341,32 +337,12 @@ async function reloadPlanning(listId: string) {
   }
 }
 
-async function dbOperation(
-  operation: () => PromiseLike<{ error: unknown }>,
-  offlineAction: {
-    table: string;
-    operation: 'insert' | 'update' | 'delete' | 'upsert';
-    payload: unknown;
-    match: Record<string, unknown> | null;
-  },
-): Promise<void> {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    addToOfflineQueue(offlineAction);
-    return;
-  }
-
+async function dbOperation(operation: () => Promise<any>) {
   try {
     const { error } = await operation();
-    if (error) {
-      const msg = String(error);
-      if (msg.includes('fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-        addToOfflineQueue(offlineAction);
-        return;
-      }
-      console.error('DB Error:', error);
-    }
-  } catch {
-    addToOfflineQueue(offlineAction);
+    if (error) console.error(error);
+  } catch (e) {
+    console.error(e);
   }
 }
 
@@ -398,14 +374,31 @@ export async function addItem(item: Partial<Item>) {
   });
 }
 
-export async function updateItem(
-  id: string,
-  updates: Partial<Item>
-) {
-  await supabase
-    .from('items')
-    .update(itemToDbPartial(updates))
-    .eq('id', id);
+export async function updateItem(id: string, updates: Partial<Item>) {
+  // 1. update local immédiat
+  items.update((current) =>
+    current.map((i) =>
+      i.id === id ? { ...i, ...updates } : i
+    )
+  );
+
+  const listId = get(currentListId);
+  if (!listId) return;
+
+  // 2. update DB avec protection offline
+  await dbOperation(
+    () =>
+      supabase
+        .from('items')
+        .update(itemToDbPartial(updates))
+        .eq('id', id),
+    {
+      table: 'items',
+      operation: 'update',
+      payload: updates,
+      match: { id },
+    }
+  );
 }
 
 function itemToDbPartial(
@@ -454,26 +447,47 @@ export async function deleteItem(id: string) {
 
 export async function saveItems(itemsArray: Item[]) {
   const listId = get(currentListId);
-  const payloads = itemsArray.filter((item) => item.id).map((item) => itemToDb(item));
+  const payloads = itemsArray
+    .filter((item) => item.id)
+    .map((item) => itemToDb(item));
 
   if (payloads.length === 0) return;
 
+  //update store local
   items.update((current) => {
     const map = new Map(current.map((i) => [i.id, i]));
+
     for (const p of payloads) {
-      map.set(p.id as string, { ...map.get(p.id as string), ...itemFromDb(p) });
+      const existing = map.get(p.id as string);
+      if (existing) {
+        map.set(p.id as string, {
+          ...existing,
+          ...itemFromDb(p),
+        });
+      }
     }
+
     return Array.from(map.values());
   });
 
   if (!listId) return;
 
-  await dbOperation(() => supabase.from('items').upsert(payloads), {
-    table: 'items',
-    operation: 'upsert',
-    payload: payloads,
-    match: null,
-  });
+  //update item par item
+  for (const p of payloads) {
+    await dbOperation(
+      () =>
+        supabase
+          .from('items')
+          .update(p)
+          .eq('id', p.id),
+      {
+        table: 'items',
+        operation: 'update',
+        payload: p,
+        match: { id: p.id },
+      }
+    );
+  }
 }
 
 export async function addMealToSync(meal: Meal) {
