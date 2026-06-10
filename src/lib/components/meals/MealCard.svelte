@@ -52,12 +52,22 @@
 
   async function saveEdit() {
     if (!editingIngredient) return;
-    meal.ingredients = meal.ingredients.map((i: MealIngredient) =>
+
+    const updatedIngredients = meal.ingredients.map((i: MealIngredient) =>
       i.id === editingIngredient!.id
-        ? { ...i, category: editCategory || 'Autre', quantity: editQty ?? null, unit: editQty ? editUnit : '' }
+        ? {
+            ...i,
+            category: editCategory || 'Autre',
+            quantity: editQty ?? null,
+            unit: editQty ? editUnit : ''
+          }
         : i
     );
-    await updateMealInSync(meal.id, { ingredients: meal.ingredients });
+
+    await updateMealInSync(meal.id, {
+      ingredients: updatedIngredients
+    });
+
     editingIngredient = null;
   }
 
@@ -171,11 +181,9 @@
   }
 
   async function removeIngredient(ingId: string) {
-    const updated = localMeal.ingredients.filter((i: MealIngredient) => i.id !== ingId);
+    const updated = meal.ingredients.filter((i: MealIngredient) => i.id !== ingId);
 
-    localMeal.ingredients = updated;
-
-    await updateMealInSync(localMeal.id, {
+    await updateMealInSync(meal.id, {
       ingredients: updated
     });
   }
@@ -207,9 +215,10 @@
       <div class="flex gap-1 shrink-0">
         <button
           class="p-2 rounded-full transition-colors {meal.isFavorite ? 'text-yellow-500 hover:bg-yellow-500/10' : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10'}"
-          onclick={() => {
-            localMeal.isFavorite = !localMeal.isFavorite;
-            updateMealInSync(localMeal.id, { isFavorite: localMeal.isFavorite });
+          onclick={async () => {
+            await updateMealInSync(meal.id, {
+              isFavorite: !meal.isFavorite
+            });
           }}
           title={meal.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
         >
@@ -228,8 +237,8 @@
         <button
           class="text-[10px] px-2 py-0.5 rounded-md transition-colors border {meal.type === tOpt ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground hover:bg-primary/20'}"
           onclick={() => {
-            localMeal.type = localMeal.type === tOpt ? undefined : tOpt;
-            updateMealInSync(localMeal.id, { type: localMeal.type });
+            const newType = meal.type === tOpt ? undefined : tOpt;
+            updateMealInSync(meal.id, { type: newType });
           }}
         >
           {tOpt}

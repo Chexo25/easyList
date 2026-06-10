@@ -2,6 +2,7 @@ import type { User } from '@supabase/supabase-js';
 import { get, writable } from 'svelte/store';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../db/supabase';
+import { categories as defaultCategories } from '$lib/data/categories';
 import type { Item, Meal, PlannedDay, Planning, ShoppingList } from '../types';
 import { itemFromDb, itemToDb, mealFromDb, mealToDb, planningFromDb, planningToDb } from '../utils/transformers';
 
@@ -14,6 +15,7 @@ export const syncMeals = writable<Meal[]>([]);
 export const syncPlanning = writable<Planning>({});
 export const syncError = writable<string | null>(null);
 export const isNetworkOffline = writable(false);
+export const customAisles = writable<string[]>([]);
 
 let currentSyncId = 0;
 
@@ -104,6 +106,41 @@ async function loadLists(userId: string) {
   isListsLoaded.set(true);
 }
 
+async function loadCustomAisles(listId: string) {
+  const user = get(currentUser);
+  if (!user) return;
+
+  const { data, error } = await supabase
+    .from('custom_aisles')
+    .select('name')
+    .eq('list_id', listId)
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('Error loading aisles:', error);
+    return;
+  }
+
+  customAisles.set(data?.map((a) => a.name) ?? []);
+}
+
+async function ensureCustomAisle(category: string) {
+  const normalized = category.trim();
+
+  if (!normalized) return;
+
+  const existing = get(customAisles);
+
+  if (
+    defaultCategories.includes(normalized) ||
+    existing.includes(normalized)
+  ) {
+    return;
+  }
+
+  await addCustomAisle(normalized);
+}
+
 export async function createNewList(name: string) {
   const user = get(currentUser);
   if (!user) return null;
@@ -119,6 +156,27 @@ export async function createNewList(name: string) {
   await loadLists(user.id);
   selectList(newList.id);
   return newList;
+}
+
+export async function addCustomAisle(name: string) {
+  const user = get(currentUser);
+  const listId = get(currentListId);
+
+  if (!user || !listId) return;
+
+  const { error } = await supabase
+    .from('custom_aisles')
+    .insert([
+      {
+        name,
+        list_id: listId,
+        user_id: user.id,
+      },
+    ]);
+
+  if (!error) {
+    await loadCustomAisles(listId);
+  }
 }
 
 export async function joinList(shareCode: string) {
@@ -193,6 +251,7 @@ export async function selectList(listId: string) {
     items.set([]);
     syncMeals.set([]);
     syncPlanning.set({});
+    customAisles.set([]);
   }
 
   const { data: itemsData } = await supabase
@@ -225,6 +284,8 @@ export async function selectList(listId: string) {
   }
 
   const { data: planData } = await supabase.from('planning').select('*').eq('list_id', listId);
+
+  await loadCustomAisles(listId);
 
   if (syncId !== currentSyncId) return;
 
@@ -363,6 +424,8 @@ export async function addItem(item: Partial<Item>) {
 
   items.update((current) => [newItem, ...current]);
 
+  await ensureCustomAisle(newItem.category);
+
   if (!listId) return;
 
   const dbPayload = itemToDb(newItem);
@@ -381,7 +444,10 @@ export async function updateItem(id: string, updates: Partial<Item>) {
       i.id === id ? { ...i, ...updates } : i
     )
   );
-
+  
+  if (updates.category) {
+    await ensureCustomAisle(updates.category);
+  }
   const listId = get(currentListId);
   if (!listId) return;
 
@@ -446,6 +512,12 @@ export async function deleteItem(id: string) {
 }
 
 export async function saveItems(itemsArray: Item[]) {
+  for (const item of itemsArray) {
+    if (item.category) {
+      await ensureCustomAisle(item.category);
+    }
+  }
+
   const listId = get(currentListId);
   const payloads = itemsArray
     .filter((item) => item.id)
@@ -525,6 +597,12 @@ export async function updateMealInSync(id: string, updates: Partial<Meal>) {
     ...updates,
     listId
   };
+
+  if (merged.ingredients) {
+    for (const ingredient of merged.ingredients) {
+      await ensureCustomAisle(ingredient.category);
+    }
+  }
 
   syncMeals.update((all) =>
     all.map((m) => (m.id === id ? merged : m))

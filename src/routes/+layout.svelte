@@ -33,11 +33,15 @@
     
     <!-- Navbar -->
     <nav class="shrink-0 w-full bg-background border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-50 flex justify-around items-center h-[4rem]">
-      <NavItem href="/" text="Courses" icon={ShoppingCart} active={page.url.pathname === '/'} />
-      <NavItem href="/meals" text="Repas" icon={Utensils} active={page.url.pathname === '/meals'}/>
+      <NavItem href="/meals" text="Repas" icon={Utensils} active={page.url.pathname === '/meals'} />
+
       <NavItem href="/planning" text="Planning" icon={CalendarDays} active={page.url.pathname === '/planning'} />
-      <NavItem href="/lists" text="Listes" icon={List} active={page.url.pathname ==='/lists'} />
-      <NavItem href="/settings" text="Paramètres" icon={Settings} active={page.url.pathname ==='/settings'} />
+
+      <NavItem href="/" text="Courses" icon={ShoppingCart} active={page.url.pathname === '/'} featured />
+
+      <NavItem href="/lists" text="Listes" icon={List} active={page.url.pathname === '/lists'} />
+
+      <NavItem href="/settings" text="Paramètres" icon={Settings} active={page.url.pathname === '/settings'} />
     </nav>
   </main>
 </div>

@@ -44,3 +44,11 @@ export interface ShoppingList {
   name: string;
   share_code: string;
 }
+
+export interface CustomAisle {
+  id: string;
+  listId: string;
+  userId: string;
+  name: string;
+  createdAt: string;
+}

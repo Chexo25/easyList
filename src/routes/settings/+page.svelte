@@ -8,11 +8,7 @@
   import { Button } from '$lib/components/ui/button';
   import { ArrowUp, ArrowDown } from 'lucide-svelte';
 
-  const themes: {
-    id: theme;
-    label: string;
-    color: string;
-  }[] = [
+  const themes = [
     { id: 'default', label: 'Défaut', color: 'bg-gray-300' },
     { id: 'ocean', label: 'Océan', color: 'bg-blue-500' },
     { id: 'forest', label: 'Cornichon', color: 'bg-green-500' },
@@ -20,6 +16,9 @@
     { id: 'rose', label: 'Rose', color: 'bg-red-400' },
     { id: 'violet', label: 'Lila', color: 'bg-purple-500' }
   ];
+
+  type ThemeId = typeof themes[number]['id'];
+  let themeId: ThemeId;
 
   let usedCategories = $derived(
     Array.from(
