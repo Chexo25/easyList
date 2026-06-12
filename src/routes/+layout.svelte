@@ -9,6 +9,12 @@
   import { mode } from '$lib/store/mode';
   import { theme } from '$lib/store/theme';
   import { browser } from '$app/environment';
+  import { unsubscribePersist } from '$lib/store/shopping';
+  import { onDestroy } from 'svelte';
+
+  onDestroy(() => {
+    unsubscribePersist.forEach(fn => fn?.());
+  });
 
   let { children } = $props();
 

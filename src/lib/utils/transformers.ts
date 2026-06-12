@@ -53,6 +53,7 @@ export function itemToDb(item: Partial<Item> & { id: string }): Record<string, u
     quantity: item.quantity ?? null,
     unit: item.unit || null,
     linked_meals: item.linkedMeals || [],
+    created_at: item.createdAt ?? new Date().toISOString(),
   };
 }
 
@@ -68,7 +69,7 @@ export function mealToDb(meal: Partial<Meal> & { id: string }): Record<string, u
   };
 }
 
-export function planningToDb(plan: Partial<PlannedDay> & { listId: string | null }): Record<string, unknown> {
+export function planningToDb(plan: Partial<PlannedDay> & { listId: string }): Record<string, unknown> {
   return {
     id: plan.id,
     list_id: plan.listId ?? null,

@@ -1,10 +1,10 @@
 import type { User } from '@supabase/supabase-js';
 import { get, writable } from 'svelte/store';
-import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../db/supabase';
 import { categories as defaultCategories } from '$lib/data/categories';
 import type { Item, Meal, PlannedDay, Planning, ShoppingList } from '../types';
 import { itemFromDb, itemToDb, mealFromDb, mealToDb, planningFromDb, planningToDb } from '../utils/transformers';
+import { persistStore } from '../utils/persist';
 
 export const currentUser = writable<User | null>(null);
 export const lists = writable<ShoppingList[]>([]);
@@ -19,29 +19,13 @@ export const customAisles = writable<string[]>([]);
 
 let currentSyncId = 0;
 
-function persistStore<T>(store: ReturnType<typeof writable<T>>, key: string) {
-  if (typeof window === 'undefined') return;
-  const cached = localStorage.getItem(key);
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      if (parsed !== null && parsed !== undefined) {
-        store.set(parsed);
-      }
-    } catch {
-      console.error('Failed to parse localStorage key:', key);
-    }
-  }
-  store.subscribe((value) => {
-    localStorage.setItem(key, JSON.stringify(value));
-  });
-}
-
-persistStore(lists, 'easyList_lists_cache');
-persistStore(currentListId, 'easyList_currentListId_cache');
-persistStore(items, 'easyList_items_cache');
-persistStore(syncMeals, 'easyList_syncMeals_cache');
-persistStore(syncPlanning, 'easyList_syncPlanning_cache');
+export const unsubscribePersist = [
+  persistStore(lists, 'easyList_lists_cache'),
+  persistStore(currentListId, 'easyList_currentListId_cache'),
+  persistStore(items, 'easyList_items_cache'),
+  persistStore(syncMeals, 'easyList_syncMeals_cache'),
+  persistStore(syncPlanning, 'easyList_syncPlanning_cache'),
+];
 
 function monitorNetwork() {
   if (typeof window === 'undefined') return;
@@ -57,9 +41,13 @@ function monitorNetwork() {
   });
 }
 
-monitorNetwork();
-
 export async function initSync() {
+
+  monitorNetwork();
+
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('easyList_offline_queue');
+  }
 
   const savedLists = get(lists);
   if (savedLists.length > 0) isListsLoaded.set(true);
@@ -95,7 +83,12 @@ async function loadLists(userId: string) {
     .eq('user_id', userId);
 
   if (!error && data) {
-    const userLists: ShoppingList[] = data.map((d: Record<string, unknown>) => d.lists as ShoppingList).filter(Boolean);
+    const userLists: ShoppingList[] = data
+      .map((d: Record<string, unknown>) => {
+        const l = d.lists as Record<string, unknown>;
+        return l ? { id: l.id as string, name: l.name as string, shareCode: l.share_code as string } : null;
+      })
+      .filter(Boolean) as ShoppingList[];
     lists.set(userLists);
 
     const current = get(currentListId);
@@ -254,11 +247,17 @@ export async function selectList(listId: string) {
     customAisles.set([]);
   }
 
-  const { data: itemsData } = await supabase
+  const { data: itemsData, error: itemsError } = await supabase
     .from('items')
     .select('*')
     .eq('list_id', listId)
     .order('created_at', { ascending: true });
+
+  if (itemsError) {
+    console.error('Error loading items:', itemsError);
+    syncError.set(itemsError.message);
+    return;
+  }
 
   if (syncId !== currentSyncId) return;
   items.set([...localItems, ...(itemsData || []).map(itemFromDb)]);
@@ -266,12 +265,18 @@ export async function selectList(listId: string) {
   const currentMeals = get(syncMeals);
   const localMeals = currentMeals.filter((m) => !m.listId);
 
-  const { data: mealsData } = await supabase
+  const { data: mealsData, error: mealsError } = await supabase
     .from('meals')
     .select('*')
     .eq('list_id', listId)
     .order('created_at', { ascending: false });
 
+  if (mealsError) {
+    console.error('Error loading meals:', mealsError);
+    syncError.set(mealsError.message);
+    return;
+  }
+  
   if (syncId !== currentSyncId) return;
   syncMeals.set([...localMeals, ...(mealsData || []).map(mealFromDb)]);
 
@@ -283,8 +288,16 @@ export async function selectList(listId: string) {
     }
   }
 
-  const { data: planData } = await supabase.from('planning').select('*').eq('list_id', listId);
+  const { data: planData, error: planError } = await supabase
+    .from('planning')
+    .select('*')
+    .eq('list_id', listId);
 
+  if (planError) {
+    console.error('Error loading planning:', planError);
+    syncError.set(planError.message);
+    return;
+  }
   await loadCustomAisles(listId);
 
   if (syncId !== currentSyncId) return;
@@ -398,10 +411,10 @@ async function reloadPlanning(listId: string) {
   }
 }
 
-async function dbOperation(operation: () => Promise<any>) {
+async function dbOperation(operation: () => PromiseLike<{ error: unknown }>) {
   try {
-    const { error } = await operation();
-    if (error) console.error(error);
+    const result = await operation();
+    if (result?.error) console.error(result.error);
   } catch (e) {
     console.error(e);
   }
@@ -429,16 +442,10 @@ export async function addItem(item: Partial<Item>) {
   if (!listId) return;
 
   const dbPayload = itemToDb(newItem);
-  await dbOperation(() => supabase.from('items').insert([dbPayload]), {
-    table: 'items',
-    operation: 'insert',
-    payload: dbPayload,
-    match: null,
-  });
+  await dbOperation(() => supabase.from('items').insert([dbPayload]));
 }
 
 export async function updateItem(id: string, updates: Partial<Item>) {
-  // 1. update local immédiat
   items.update((current) =>
     current.map((i) =>
       i.id === id ? { ...i, ...updates } : i
@@ -451,19 +458,12 @@ export async function updateItem(id: string, updates: Partial<Item>) {
   const listId = get(currentListId);
   if (!listId) return;
 
-  // 2. update DB avec protection offline
   await dbOperation(
     () =>
       supabase
         .from('items')
         .update(itemToDbPartial(updates))
         .eq('id', id),
-    {
-      table: 'items',
-      operation: 'update',
-      payload: updates,
-      match: { id },
-    }
   );
 }
 
@@ -489,12 +489,7 @@ export async function toggleItem(id: string, isBought: boolean) {
   if (!listId) return;
 
   const dbPayload = { is_bought: isBought };
-  await dbOperation(() => supabase.from('items').update(dbPayload).eq('id', id), {
-    table: 'items',
-    operation: 'update',
-    payload: dbPayload,
-    match: { id },
-  });
+  await dbOperation(() => supabase.from('items').update(dbPayload).eq('id', id));
 }
 
 export async function deleteItem(id: string) {
@@ -503,12 +498,7 @@ export async function deleteItem(id: string) {
   const listId = get(currentListId);
   if (!listId) return;
 
-  await dbOperation(() => supabase.from('items').delete().eq('id', id), {
-    table: 'items',
-    operation: 'delete',
-    payload: null,
-    match: { id },
-  });
+  await dbOperation(() => supabase.from('items').delete().eq('id', id));
 }
 
 export async function saveItems(itemsArray: Item[]) {
@@ -525,7 +515,6 @@ export async function saveItems(itemsArray: Item[]) {
 
   if (payloads.length === 0) return;
 
-  //update store local
   items.update((current) => {
     const map = new Map(current.map((i) => [i.id, i]));
 
@@ -544,54 +533,34 @@ export async function saveItems(itemsArray: Item[]) {
 
   if (!listId) return;
 
-  //update item par item
-  for (const p of payloads) {
-    await dbOperation(
-      () =>
-        supabase
-          .from('items')
-          .update(p)
-          .eq('id', p.id),
-      {
-        table: 'items',
-        operation: 'update',
-        payload: p,
-        match: { id: p.id },
-      }
-    );
-  }
+  await dbOperation(() =>
+    supabase.from('items').upsert(payloads, { onConflict: 'id' })
+  );
 }
 
 export async function addMealToSync(meal: Meal) {
-  meal.listId = get(currentListId);
+  const listId = get(currentListId);
+  const mealWithList = { ...meal, listId };
   syncMeals.update((current) => {
-    if (current.some(m => m.id === meal.id)) return current;
-    return [meal, ...current];
+    if (current.some(m => m.id === mealWithList.id)) return current;
+    return [mealWithList, ...current];
   });
 
-  const listId = get(currentListId);
   if (!listId) return;
 
   const dbPayload = mealToDb(meal);
-  await dbOperation(() => supabase.from('meals').insert([dbPayload]), {
-    table: 'meals',
-    operation: 'insert',
-    payload: dbPayload,
-    match: null,
-  });
+  await dbOperation(() => supabase.from('meals').insert([dbPayload]));
 }
 
 export async function updateMealInSync(id: string, updates: Partial<Meal>) {
   const listId = get(currentListId);
   if (!listId) return;
 
-  // 🔥 on récupère le meal COMPLET depuis le store
   const current = get(syncMeals);
   const meal = current.find(m => m.id === id);
 
   if (!meal) return;
 
-  // 🔥 on merge correctement
   const merged = {
     ...meal,
     ...updates,
@@ -611,14 +580,7 @@ export async function updateMealInSync(id: string, updates: Partial<Meal>) {
   const dbPayload = mealToDb(merged);
 
   await dbOperation(
-    () => supabase.from('meals').update(dbPayload).eq('id', id),
-    {
-      table: 'meals',
-      operation: 'update',
-      payload: dbPayload,
-      match: { id },
-    }
-  );
+    () => supabase.from('meals').update(dbPayload).eq('id', id));
 }
 
 export async function deleteMealFromSync(id: string) {
@@ -664,18 +626,13 @@ export async function deleteMealFromSync(id: string) {
   const listId = get(currentListId);
   if (!listId) return;
 
-  await dbOperation(() => supabase.from('meals').delete().eq('id', id), {
-    table: 'meals',
-    operation: 'delete',
-    payload: null,
-    match: { id },
-  });
+  await dbOperation(() => supabase.from('meals').delete().eq('id', id));
 }
 
 export async function updatePlannedDayInSync(date: string, updates: Partial<PlannedDay>) {
   const listId = get(currentListId);
   const currentPlan = get(syncPlanning);
-  const existingId = currentPlan[date]?.id || uuidv4();
+  const existingId = currentPlan[date]?.id || crypto.randomUUID();
 
   const updatedDay: PlannedDay = {
     id: existingId,
@@ -692,12 +649,7 @@ export async function updatePlannedDayInSync(date: string, updates: Partial<Plan
   if (!listId) return;
 
   const dbPayload = planningToDb({ ...updatedDay, listId });
-  await dbOperation(() => supabase.from('planning').upsert(dbPayload, { onConflict: 'list_id,date' }), {
-    table: 'planning',
-    operation: 'upsert',
-    payload: dbPayload,
-    match: null,
-  });
+  await dbOperation(() => supabase.from('planning').upsert(dbPayload, { onConflict: 'list_id,date' }));
 }
 
 async function migrateLocalData(newListId: string) {
@@ -733,4 +685,14 @@ async function migrateLocalData(newListId: string) {
       console.error('Error migrating planning:', err);
     }
   }
+
+  items.update((current) => current.filter((i) => i.listId));
+  syncMeals.update((current) => current.filter((m) => m.listId));
+  syncPlanning.update((current) => {
+    const cleaned: Planning = {};
+    for (const date in current) {
+      if (current[date].id) cleaned[date] = current[date];
+    }
+    return cleaned;
+  });
 }

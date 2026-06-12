@@ -42,13 +42,5 @@ export type Planning = Record<string, PlannedDay>;
 export interface ShoppingList {
   id: string;
   name: string;
-  share_code: string;
-}
-
-export interface CustomAisle {
-  id: string;
-  listId: string;
-  userId: string;
-  name: string;
-  createdAt: string;
+  shareCode: string;
 }

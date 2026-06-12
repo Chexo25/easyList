@@ -1,20 +1,17 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
+import { browser } from '$app/environment';
 
-const STORAGE_KEY = 'app-mode';
+const STORAGE_KEY = 'easyList_mode';
 
 export type Mode = 'light' | 'dark';
 
 function createModeStore() {
-  const initial: Mode =
-    typeof localStorage !== 'undefined'
-      ? (localStorage.getItem(STORAGE_KEY) as Mode) || 'light'
-      : 'light';
+  const initial: Mode = browser
+    ? (localStorage.getItem(STORAGE_KEY) as Mode) || 'light'
+    : 'light';
 
-  if (typeof document !== 'undefined') {
-    document.documentElement.classList.toggle(
-      'dark',
-      initial === 'dark'
-    );
+  if (browser) {
+    document.documentElement.classList.toggle('dark', initial === 'dark');
   }
 
   const { subscribe, set: internalSet } = writable<Mode>(initial);
@@ -35,16 +32,9 @@ function createModeStore() {
     },
 
     toggle: () => {
-      const current =
-        (localStorage.getItem(STORAGE_KEY) as Mode) || 'light';
+      const next: Mode = get({ subscribe }) === 'dark' ? 'light' : 'dark';
 
-      const next: Mode =
-        current === 'dark' ? 'light' : 'dark';
-
-      document.documentElement.classList.toggle(
-        'dark',
-        next === 'dark'
-      );
+      document.documentElement.classList.toggle('dark', next === 'dark');
 
       localStorage.setItem(STORAGE_KEY, next);
       internalSet(next);
