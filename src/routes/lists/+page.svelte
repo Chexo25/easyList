@@ -154,11 +154,26 @@
 </div>
 
 {#if listToDelete}
-    <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" role="presentation" aria-hidden="true" onclick={() => listToDelete = null} onkeydown={(e) => { if (e.key === 'Escape') listToDelete = null; }}>      <h2 class="text-xl font-semibold">Supprimer la liste ?</h2>
+  <div
+    class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+    role="presentation"
+    onclick={() => listToDelete = null}
+    onkeydown={(e) => { if (e.key === 'Escape') listToDelete = null; }}
+  >
+    <div
+      class="bg-card w-full max-w-sm rounded-xl shadow-lg border p-6 space-y-4"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
+      <h2 class="text-xl font-semibold">Supprimer la liste ?</h2>
       <p class="text-sm text-muted-foreground">Êtes-vous sûr de vouloir supprimer cette liste ? Les membres n'y auront plus accès, mais certaines données liées pourraient être supprimées définitivement selon la configuration base de données.</p>
       <div class="flex items-center justify-end gap-3 pt-4">
         <button type="button" class="px-4 py-2 border rounded-md text-sm font-medium hover:bg-muted" onclick={() => listToDelete = null}>Annuler</button>
         <button type="button" class="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:bg-destructive/90" onclick={confirmDelete}>Confirmer, supprimer</button>
       </div>
     </div>
+  </div>
 {/if}
