@@ -1,31 +1,27 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { get } from 'svelte/store';
-  import { v4 as uuidv4 } from 'uuid';
-  import { updateMealInSync, syncMeals, items as syncItems, addItem } from '$lib/store/shopping';
+  import { updateMealInSync, syncMeals } from '$lib/store/shopping';  
   import type { Meal, MealIngredient, Item } from '$lib/types';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { ArrowLeft, ArrowUp, Trash2 } from 'lucide-svelte';
-
-  let mealId = page.params.id;
-  let meal = $state<Meal | null>(null);
 
   let addName = $state('');
   let addCategory = $state('');
   let addQty = $state(1);
   let addUnit = $state('');
 
-  onMount(async () => {
-    const meals = get(syncMeals);
-    const found = meals.find(m => m.id === mealId);
-    if (!found) {
+  let mealId = page.params.id;
+
+  let meal = $derived(
+    $syncMeals?.find(m => m.id === mealId) ?? null
+  );
+
+  $effect(() => {
+    if ($syncMeals !== undefined && meal === null) {
       goto('/meals');
-      return;
     }
-    meal = { ...found, isFavorite: found.isFavorite ?? false };
   });
 
   async function handleAddIngredient(e: Event) {
@@ -36,7 +32,7 @@
     const ingredientCategory = addCategory.trim() || 'Divers';
 
     const newIng: MealIngredient = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       name: ingredientName,
       category: ingredientCategory,
       quantity: addQty,
@@ -45,24 +41,12 @@
 
     meal.ingredients = [...meal.ingredients, newIng];
     await updateMealInSync(meal.id, { ingredients: meal.ingredients });
-
-    const allIngredients: Item[] = get(syncItems) || [];
-    const existing = allIngredients.find(i => i.name.toLowerCase() === ingredientName.toLowerCase());
-
-    if (!existing) {
-      await addItem({
-        id: uuidv4(),
-        name: ingredientName,
-        category: ingredientCategory,
-        isBought: true,
-      });
     }
 
     addName = '';
     addCategory = '';
     addQty = 1;
     addUnit = '';
-  }
 
   async function removeIngredient(ingId: string) {
     if (!meal) return;

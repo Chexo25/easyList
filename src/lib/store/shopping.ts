@@ -182,7 +182,7 @@ export async function joinList(shareCode: string) {
 
   const { error } = await supabase.from('list_members').insert([{ list_id: listToJoin.id, user_id: user.id }]);
 
-  if (!error || error.code === '23505') {
+  if (!error || error.code === '23505' || error.code === '409') {
     await loadLists(user.id);
     selectList(listToJoin.id);
     return true;

@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { v4 as uuidv4 } from 'uuid';
   import { items as syncItems, syncMeals, lists, currentListId, saveItems, updateItem, deleteItem, addItem, isListsLoaded, isNetworkOffline } from '$lib/store/shopping';
-  import { get } from 'svelte/store';
   import { toast } from 'svelte-sonner';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Label } from '$lib/components/ui/label';
   import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
+  import { Input } from '$lib/components/ui/input'; 
   import { Badge } from '$lib/components/ui/badge';
   import * as Dialog from '$lib/components/ui/dialog';
   import { ArrowUp, Trash2, Plus, Utensils, Check, Pencil } from 'lucide-svelte';
@@ -14,30 +12,17 @@
   import { searchLocalProducts, type Product } from '$lib/data/products';
   import { categoryOrder } from '$lib/store/categoryOrder';
   import type { Item, Meal } from '$lib/types';
+  import { mergeOrCreateItem } from '$lib/utils/mergeItems';
 
   // --- State ---
 
-  let items = $state<Item[]>([]);
-  let isOffline = $state(false);
-  let currentListName = $state('');
-  let listsLoaded = $state(false);
-
-  $effect(() => {
-    const unsub1 = isNetworkOffline.subscribe(v => isOffline = v);
-    const unsub2 = isListsLoaded.subscribe(v => listsLoaded = v);
-    const unsub3 = lists.subscribe(ls => {
-      const id = get(currentListId);
-      currentListName = (ls || []).find(l => l?.id === id)?.name || '';
-    });
-    const unsub4 = currentListId.subscribe(id => {
-      const ls = get(lists);
-      currentListName = (ls || []).find(l => l?.id === id)?.name || '';
-    });
-    const unsub5 = syncItems.subscribe(val => { items = val || []; });
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
-  });
-
+  let items = $derived($syncItems || []);
+  let isOffline = $derived($isNetworkOffline);
+  let listsLoaded = $derived($isListsLoaded);
   let meals = $derived($syncMeals || []);
+  let currentListName = $derived(
+    ($lists || []).find(l => l?.id === $currentListId)?.name || ''
+  );
   let addName = $state('');
   let addCategory = $state('');
   let addQty: number | undefined = $state();
@@ -149,43 +134,22 @@
   }
 
   async function selectMeal(meal: Meal) {
-    const updatedItems = [...items];
+    let current = [...items];
+
     for (const ming of meal.ingredients) {
-      const activeIndex = updatedItems.findIndex(i => i.name.toLowerCase() === ming.name.toLowerCase() && !i.isBought);
-      if (activeIndex !== -1) {
-        const existing = updatedItems[activeIndex];
-        updatedItems[activeIndex] = {
-          ...existing,
-          quantity: (existing.quantity || 0) + (ming.quantity || 1),
-          linkedMeals: existing.linkedMeals.includes(meal.name)
-            ? existing.linkedMeals
-            : [...existing.linkedMeals, meal.name],
-        };
-      } else {
-        const boughtIndex = updatedItems.findIndex(i => i.name.toLowerCase() === ming.name.toLowerCase() && i.isBought);
-        if (boughtIndex !== -1) {
-          updatedItems[boughtIndex] = {
-            ...updatedItems[boughtIndex],
-            isBought: false,
-            quantity: ming.quantity || 1,
-            linkedMeals: [meal.name],
-          };
-        } else {
-          updatedItems.push({
-            id: uuidv4(),
-            listId: get(currentListId),
-            name: ming.name,
-            category: ming.category,
-            isBought: false,
-            createdAt: new Date().toISOString(),
-            quantity: ming.quantity || 1,
-            unit: ming.unit || '',
-            linkedMeals: [meal.name],
-          });
-        }
-      }
+      const { updatedItems, newItem } = mergeOrCreateItem(
+        current,
+        ming.name,
+        ming.category,
+        ming.quantity || 1,
+        ming.unit || '',
+        meal.name
+      );
+      current = updatedItems;
+      if (newItem) await addItem(newItem);
     }
-    await saveItems(updatedItems);
+
+    await saveItems(current);
     addName = '';
     showSuggestions = false;
     toast.success(`"${meal.name}" ajouté à la liste de courses !`);
@@ -200,32 +164,12 @@
     const quantity = addQty || 1;
     const unit = addUnit.trim();
 
-    const existingIndex = items.findIndex(i => i.name.toLowerCase() === name.toLowerCase() && !i.isBought);
-    if (existingIndex !== -1) {
-      const existing = items[existingIndex];
-      const newQty = (existing.quantity || 0) + quantity;
-      items[existingIndex] = { ...existing, quantity: newQty, category, unit: unit || existing.unit };
-      await updateItem(existing.id, { quantity: newQty, category, unit: unit || existing.unit });
+    const { updatedItems, newItem } = mergeOrCreateItem(items, name, category, quantity, unit);
+
+    if (newItem) {
+      await addItem(newItem);
     } else {
-      const boughtIndex = items.findIndex(i => i.name.toLowerCase() === name.toLowerCase() && i.isBought);
-      if (boughtIndex !== -1) {
-        items[boughtIndex] = { ...items[boughtIndex], isBought: false, quantity, category, unit, linkedMeals: [] };
-        await updateItem(items[boughtIndex].id, { isBought: false, quantity, category, unit, linkedMeals: [] });
-      } else {
-        const newItem: Item = {
-          id: uuidv4(),
-          listId: get(currentListId),
-          name,
-          category,
-          isBought: false,
-          createdAt: new Date().toISOString(),
-          quantity,
-          unit,
-          linkedMeals: [],
-        };
-        items = [...items, newItem];
-        await addItem(newItem);
-      }
+      await saveItems(updatedItems);
     }
 
     addName = '';
@@ -254,27 +198,25 @@
 
   // --- Derived ---
 
-  function sortByCategory(items: Item[]) {
-    const order = get(categoryOrder);
+let unboughtItems = $derived(
+  [...items.filter(i => !i.isBought)].sort((a, b) => {
+    const order = $categoryOrder;
+    const orderA = order.indexOf(a.category) === -1 ? 999 : order.indexOf(a.category);
+    const orderB = order.indexOf(b.category) === -1 ? 999 : order.indexOf(b.category);
+    if (orderA !== orderB) return orderA - orderB;
+    return a.name.localeCompare(b.name);
+  })
+);
 
-    return [...items].sort((a, b) => {
-
-      const catA = order.indexOf(a.category);
-      const catB = order.indexOf(b.category);
-
-      const orderA = catA === -1 ? 999 : catA;
-      const orderB = catB === -1 ? 999 : catB;
-
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
-      return a.name.localeCompare(b.name);
-    });
-  }
-
-  let unboughtItems = $derived(sortByCategory(items.filter(i => !i.isBought)));
-  let boughtItems = $derived(sortByCategory(items.filter(i => i.isBought)));
+let boughtItems = $derived(
+  [...items.filter(i => i.isBought)].sort((a, b) => {
+    const order = $categoryOrder;
+    const orderA = order.indexOf(a.category) === -1 ? 999 : order.indexOf(a.category);
+    const orderB = order.indexOf(b.category) === -1 ? 999 : order.indexOf(b.category);
+    if (orderA !== orderB) return orderA - orderB;
+    return a.name.localeCompare(b.name);
+  })
+);
 
   let groupedUnbought = $derived(
     unboughtItems.reduce((acc, item) => {

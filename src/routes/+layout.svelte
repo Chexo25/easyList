@@ -4,12 +4,9 @@
   import NavItem from '$lib/components/layout/NavItem.svelte';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { initSync } from '$lib/store/shopping';
+  import { initSync, unsubscribePersist } from '$lib/store/shopping';
   import { Toaster } from "$lib/components/ui/sonner";
-  import { mode } from '$lib/store/mode';
   import { theme } from '$lib/store/theme';
-  import { browser } from '$app/environment';
-  import { unsubscribePersist } from '$lib/store/shopping';
   import { onDestroy } from 'svelte';
 
   onDestroy(() => {
@@ -18,15 +15,11 @@
 
   let { children } = $props();
 
-  theme.subscribe((value) => {
-    if (typeof document === 'undefined') return;
-
-    document.documentElement.dataset.theme =
-      value === 'default' ? '' : value;
-  });
-
   onMount(() => {
     initSync();
+    theme.subscribe((value) => {
+      document.documentElement.dataset.theme = value === 'default' ? '' : value;
+    });
   });
 </script>
 

@@ -1,8 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { tick } from 'svelte';
-  import { v4 as uuidv4 } from 'uuid';
-  import { updateMealInSync, items as syncItems, addItem } from '$lib/store/shopping';
+  import { updateMealInSync, items as syncItems} from '$lib/store/shopping';
   import type { Meal, MealIngredient, Item } from '$lib/types';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
@@ -37,6 +35,12 @@
       ? defaultCategories.filter(c => c.toLowerCase().includes(editCategory.toLowerCase()))
       : defaultCategories
   );
+
+  let mealName = $derived(meal.name); 
+
+  $effect(() => {
+    mealName = meal.name;
+  });
 
   function selectEditCategory(cat: string) {
     editCategory = cat;
@@ -76,7 +80,11 @@
   let apiProducts = $state<Product[]>([]);
   let isLoadingApi = $state(false);
 
-  let knownProducts = $state<{ name: string; category: string }[]>([]);
+  let knownProducts = $derived(
+    Array.from(
+      new Map(($syncItems || []).map(i => [i.name.toLowerCase(), { name: i.name, category: i.category }])).values()
+    )
+  );
 
   $effect(() => {
     const all: Item[] = get(syncItems) || [];
@@ -131,7 +139,7 @@
 
   let addNameInput: HTMLInputElement | null = $state(null);
 
-  let hasFocused = false;
+  let hasFocused = $state(false);
   $effect(() => {
     if (addNameInput && !hasFocused && meal.createdAt && Date.now() - new Date(meal.createdAt).getTime() < 2000) {
       setTimeout(() => addNameInput?.focus(), 100);
@@ -147,7 +155,7 @@
     const ingredientCategory = addCategory.trim() || 'Divers';
 
     const newIng: MealIngredient = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       name: ingredientName,
       category: ingredientCategory,
       quantity: addQty ?? null,
@@ -159,18 +167,6 @@
     await updateMealInSync(meal.id, {
       ingredients: updated
     });
-
-    const allIngredients: Item[] = get(syncItems) || [];
-    const existing = allIngredients.find(i => i.name.toLowerCase() === ingredientName.toLowerCase());
-
-    if (!existing) {
-      await addItem({
-        id: uuidv4(),
-        name: ingredientName,
-        category: ingredientCategory,
-        isBought: true,
-      });
-    }
 
     addName = '';
     addCategory = '';
@@ -195,8 +191,8 @@
       <div class="flex-1 flex flex-col items-start gap-1">
         <input
           type="text"
-          bind:value={meal.name}
-          onchange={() => updateMealInSync(meal.id, { name: meal.name })}
+          value={mealName}
+          oninput={() => updateMealInSync(meal.id, { name: mealName })}
           class="font-bold text-lg bg-transparent border-none outline-none focus:ring-0 w-full p-0"
         />
         <button
@@ -325,7 +321,7 @@
                   <span class="w-3 h-3 border-2 border-primary/50 border-t-primary rounded-full animate-spin"></span>
                 {/if}
               </div>
-              {#each displayApiProducts as sp}
+              {#each displayApiProducts as sp (sp.name)}
                 <button type="button" class="w-full text-left px-3 py-2 hover:bg-muted transition-colors flex items-center gap-2 border-b border-border/50 last:border-0" onclick={() => selectProduct(sp)}>
                   <span class="font-medium text-sm">{sp.name}</span>
                   {#if sp.category}

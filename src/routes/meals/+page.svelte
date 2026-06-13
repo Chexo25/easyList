@@ -1,32 +1,22 @@
 <script lang="ts">
-  import { v4 as uuidv4 } from 'uuid';
-  import { syncMeals, addMealToSync, deleteMealFromSync, saveItems, currentListId, items as syncItems } from '$lib/store/shopping';
-  import { get } from 'svelte/store';
+  import { syncMeals, addMealToSync, deleteMealFromSync, saveItems, currentListId, items as syncItems, addItem } from '$lib/store/shopping';  import { get } from 'svelte/store';
   import { toast } from 'svelte-sonner';
   import type { Meal, Item } from '$lib/types';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Plus } from 'lucide-svelte';
   import MealCard from '$lib/components/meals/MealCard.svelte';
+  import { mergeOrCreateItem } from '$lib/utils/mergeItems';
 
-  let meals = $state<Meal[]>([]);
-  $effect(() => {
-    const unsub = syncMeals.subscribe(val => {
-      const seen = new Set();
-      meals = (val || [])
-        .filter(m => {
-          if (seen.has(m.id)) return false;
-          seen.add(m.id);
-          return true;
-        })
-        .map(m => ({
-          ...m,
-          ingredients: m.ingredients || [],
-          isFavorite: m.isFavorite ?? false,
-        }));
-    });
-    return unsub;
-  });
+
+  let meals = $derived(
+    Array.from(new Map(($syncMeals || []).map(m => [m.id, m])).values())
+      .map(m => ({
+        ...m,
+        ingredients: m.ingredients || [],
+        isFavorite: m.isFavorite ?? false,
+      }))
+  );
 
   let newMealName = $state('');
 
@@ -49,7 +39,7 @@
     const listId = get(currentListId);
 
     if (!listId) {
-      console.error('No active list selected');
+      toast.error('Créez d\'abord une liste de courses dans l\'onglet Listes.');
       return;
     }
 
@@ -72,53 +62,28 @@
   }
 
   async function addMealToShopping(meal: Meal) {
-    const currentShopping: Item[] = (get(syncItems) || []).map(i => ({ ...i }));
-    const toSave: Item[] = [...currentShopping];
+    let current = [...($syncItems || [])];
 
     for (const ming of meal.ingredients) {
-      const activeIndex = toSave.findIndex(i => i.name.toLowerCase() === ming.name.toLowerCase() && !i.isBought);
-
-      if (activeIndex !== -1) {
-        const existing = toSave[activeIndex];
-        toSave[activeIndex] = {
-          ...existing,
-          quantity: (existing.quantity || 0) + (ming.quantity || 1),
-          linkedMeals: existing.linkedMeals.includes(meal.name)
-            ? existing.linkedMeals
-            : [...existing.linkedMeals, meal.name],
-          category: ming.category,
-          unit: ming.unit || existing.unit,
-        };
-      } else {
-        const boughtIndex = toSave.findIndex(i => i.name.toLowerCase() === ming.name.toLowerCase() && i.isBought);
-        if (boughtIndex !== -1) {
-          toSave[boughtIndex] = {
-            ...toSave[boughtIndex],
-            isBought: false,
-            quantity: ming.quantity || 1,
-            linkedMeals: [meal.name],
-            category: ming.category,
-            unit: ming.unit || toSave[boughtIndex].unit,
-          };
-        } else {
-          toSave.push({
-            id: uuidv4(),
-            listId: get(currentListId),
-            name: ming.name,
-            category: ming.category,
-            isBought: false,
-            createdAt: new Date().toISOString(),
-            quantity: ming.quantity || 1,
-            unit: ming.unit || '',
-            linkedMeals: [meal.name],
-          });
-        }
+      const { updatedItems, newItem } = mergeOrCreateItem(
+        current,
+        ming.name,
+        ming.category,
+        ming.quantity || 1,
+        ming.unit || '',
+        meal.name
+      );
+      current = updatedItems;
+      if (newItem) {
+        newItem.listId = $currentListId;
+        await addItem(newItem);
       }
     }
 
-    await saveItems(toSave);
+    await saveItems(current);
     toast.success(`"${meal.name}" ajouté à la liste de courses !`);
   }
+  
 </script>
 
 <div class="flex flex-col h-full min-h-0">

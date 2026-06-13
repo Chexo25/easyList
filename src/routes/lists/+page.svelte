@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
   import { lists, currentListId, createNewList, joinList, selectList, syncError, currentUser, updateListName, deleteList } from '$lib/store/shopping';
   import { Plus, Users, Key, List, Pencil, Trash2 } from 'lucide-svelte';
-  import type { ShoppingList } from '$lib/types';
 
   let newListName = $state('');
   let shareCodeToJoin = $state('');
@@ -13,22 +11,10 @@
   let listToDelete: string | null = $state(null);
   let isCreating = $state(false);
 
-  let listsValue: ShoppingList[] = $state([]);
-  let currentListIdValue: string | null = $state(null);
-  let errValue: string | null = $state(null);
-  let userValue = $state<unknown>(null);
-
-  const unsubscribeLists = lists.subscribe(val => listsValue = val || []);
-  const unsubscribeCurrent = currentListId.subscribe(val => currentListIdValue = val);
-  const unsubscribeErr = syncError.subscribe(val => errValue = val);
-  const unsubscribeUser = currentUser.subscribe(val => userValue = val);
-
-  onDestroy(() => {
-    unsubscribeLists();
-    unsubscribeCurrent();
-    unsubscribeErr();
-    unsubscribeUser();
-  });
+  let listsValue = $derived($lists || []);
+  let currentListIdValue = $derived($currentListId);
+  let errValue = $derived($syncError);
+  let userValue = $derived($currentUser);
 
   async function handleCreate() {
     if (!newListName.trim() || isCreating) return;
@@ -54,7 +40,7 @@
     joinStatus = 'loading';
     const success = await joinList(shareCodeToJoin.toLowerCase());
     if (success) {
-      joinMessage = 'Liste rejointe !';
+      const alreadyMember = listsValue.some(l => l.shareCode?.toLowerCase() === shareCodeToJoin.toLowerCase());      joinMessage = alreadyMember ? 'Vous êtes déjà membre de cette liste.' : 'Liste rejointe !';
       joinStatus = 'success';
       shareCodeToJoin = '';
     } else {
@@ -64,12 +50,13 @@
     setTimeout(() => { joinMessage = ''; joinStatus = 'idle'; }, 3000);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (listToDelete) {
-      deleteList(listToDelete);
+      await deleteList(listToDelete);
       listToDelete = null;
     }
   }
+
 </script>
 
 <div class="h-full overflow-y-auto p-4 bg-muted/10 space-y-6">
@@ -97,34 +84,38 @@
             class="w-full text-left border rounded-xl shadow-sm transition-all duration-200 overflow-hidden {currentListIdValue === list.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-card-foreground hover:border-primary/50'}"
           >
             {#if listToEdit === list.id}
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <form onsubmit={(e) => { e.preventDefault(); handleEditSubmit(list.id); }} class="flex gap-2 w-full p-4">
                 <input type="text" bind:value={editedName} class="flex-1 px-2 py-1 text-sm border rounded-md text-foreground" />
                 <button type="submit" class="px-2 py-1 bg-primary text-white rounded-md text-xs">OK</button>
                 <button type="button" class="px-2 py-1 bg-muted text-muted-foreground rounded-md text-xs" onclick={() => listToEdit = null}>X</button>
               </form>
             {:else}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div class="w-full p-4 cursor-pointer text-left" onclick={() => selectList(list.id)} role="button" tabindex="0" onkeydown={(e) => { if (e.key === 'Enter') selectList(list.id); }}>
-                <div class="flex justify-between items-start">
-                  <h3 class="font-medium text-lg flex items-center gap-2">
-                    {list.name}
-                    <span class="inline-flex gap-1">
-                      <button type="button" class="text-muted-foreground hover:text-primary" onclick={(e) => { e.stopPropagation(); listToEdit = list.id; editedName = list.name; }}>
-                        <Pencil class="w-4 h-4" />
-                      </button>
-                      <button type="button" class="text-muted-foreground hover:text-destructive" onclick={(e) => { e.stopPropagation(); listToDelete = list.id; }}>
-                        <Trash2 class="w-4 h-4" />
-                      </button>
-                    </span>
-                  </h3>
-                  {#if currentListIdValue === list.id}
-                    <div class="px-2 py-1 bg-white/20 rounded-md text-xs font-semibold">Active</div>
-                  {/if}
-                </div>
-                <div class="mt-3 flex items-center gap-2 text-sm opacity-80 bg-black/5 dark:bg-white/10 p-2 rounded-md w-fit">
-                  <Key class="w-4 h-4" />
-                  Code de partage : <strong class="tracking-widest font-mono text-base uppercase">{list.share_code}</strong>
+              <div class="w-full">
+                <div class="flex justify-between items-start p-4">
+                  <div
+                    class="flex-1 cursor-pointer"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => selectList(list.id)}
+                    onkeydown={(e) => { if (e.key === 'Enter') selectList(list.id); }}
+                  >
+                    <h3 class="font-medium text-lg">{list.name}</h3>
+                      <div class="mt-2 flex items-center gap-2 text-sm opacity-80 bg-black/5 dark:bg-white/10 p-2 rounded-md w-fit shrink-0 whitespace-nowrap">
+                        <Key class="w-4 h-4 shrink-0" />
+                        Code de partage : <strong class="tracking-widest font-mono text-base uppercase">{list.shareCode}</strong>
+                      </div>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0 ml-4">
+                    {#if currentListIdValue === list.id}
+                      <div class="px-2 py-1 bg-white/20 rounded-md text-xs font-semibold mr-2">Active</div>
+                    {/if}
+                    <button type="button" class="text-muted-foreground hover:text-primary p-2 rounded-full hover:bg-primary/10" onclick={() => { listToEdit = list.id; editedName = list.name; }}>
+                      <Pencil class="w-4 h-4" />
+                    </button>
+                    <button type="button" class="text-muted-foreground hover:text-destructive p-2 rounded-full hover:bg-destructive/10" onclick={() => { listToDelete = list.id; }}>
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             {/if}
@@ -163,17 +154,11 @@
 </div>
 
 {#if listToDelete}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick={() => listToDelete = null} role="presentation">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="bg-card w-full max-w-sm rounded-xl shadow-lg border p-6 space-y-4" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-      <h2 class="text-xl font-semibold">Supprimer la liste ?</h2>
+    <div class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" role="presentation" aria-hidden="true" onclick={() => listToDelete = null} onkeydown={(e) => { if (e.key === 'Escape') listToDelete = null; }}>      <h2 class="text-xl font-semibold">Supprimer la liste ?</h2>
       <p class="text-sm text-muted-foreground">Êtes-vous sûr de vouloir supprimer cette liste ? Les membres n'y auront plus accès, mais certaines données liées pourraient être supprimées définitivement selon la configuration base de données.</p>
       <div class="flex items-center justify-end gap-3 pt-4">
         <button type="button" class="px-4 py-2 border rounded-md text-sm font-medium hover:bg-muted" onclick={() => listToDelete = null}>Annuler</button>
         <button type="button" class="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:bg-destructive/90" onclick={confirmDelete}>Confirmer, supprimer</button>
       </div>
     </div>
-  </div>
 {/if}
