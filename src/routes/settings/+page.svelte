@@ -11,9 +11,9 @@
   const themes: { id: Theme; label: string; color: string }[] = [
     { id: 'default', label: 'Défaut', color: 'bg-gray-300' },
     { id: 'ocean', label: 'Schtroumpf', color: 'bg-blue-500' },
+    { id: 'rose', label: 'Cerise', color: 'bg-red-400' },
     { id: 'forest', label: 'Cornichon', color: 'bg-green-500' },
     { id: 'sunset', label: 'Sunset', color: 'bg-orange-400' },
-    { id: 'rose', label: 'Cerise', color: 'bg-red-400' },
     { id: 'violet', label: 'Lavande', color: 'bg-purple-500' },
   ];
 
@@ -100,28 +100,14 @@
     </p>
 
     <div class="flex flex-wrap gap-3">
-
       {#each themes as t}
         <button
           onclick={() => theme.set(t.id)}
-          class="
-            flex items-center gap-2 px-3 py-2 rounded-full border
-            transition hover:bg-muted/40
-            {$theme === t.id ? 'border-primary bg-muted/40' : 'border-border'}
-          "
+          class="flex items-center gap-2 px-3 py-2 rounded-full border transition hover:bg-muted/40
+            {$theme === t.id ? 'border-primary bg-primary/10 font-semibold' : 'border-border'}"
         >
-
-          <!-- color dot -->
-          <span class={`w-3 h-3 rounded-full ${t.color}`} />
-
-          <!-- label -->
+          <span class={`w-3 h-3 rounded-full shrink-0 ${t.color}`} />
           <span class="text-sm">{t.label}</span>
-
-          <!-- active indicator -->
-          {#if $theme === t.id}
-            <span class="w-2 h-2 rounded-full bg-primary ml-1"></span>
-          {/if}
-
         </button>
       {/each}
 

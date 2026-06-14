@@ -81,7 +81,7 @@
       {:else}
         {#each listsValue as list (list.id)}
           <div
-            class="w-full text-left border rounded-xl shadow-sm transition-all duration-200 overflow-hidden {currentListIdValue === list.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-card-foreground hover:border-primary/50'}"
+            class="w-full text-left border rounded-xl shadow-sm transition-all duration-200 overflow-hidden relative {currentListIdValue === list.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-card-foreground hover:border-primary/50'}"
           >
             {#if listToEdit === list.id}
               <form onsubmit={(e) => { e.preventDefault(); handleEditSubmit(list.id); }} class="flex gap-2 w-full p-4">
@@ -106,9 +106,6 @@
                       </div>
                   </div>
                   <div class="flex items-center gap-1 shrink-0 ml-4">
-                    {#if currentListIdValue === list.id}
-                      <div class="px-2 py-1 bg-white/20 rounded-md text-xs font-semibold mr-2">Active</div>
-                    {/if}
                     <button type="button" class="text-muted-foreground hover:text-primary p-2 rounded-full hover:bg-primary/10" onclick={() => { listToEdit = list.id; editedName = list.name; }}>
                       <Pencil class="w-4 h-4" />
                     </button>
@@ -118,6 +115,9 @@
                   </div>
                 </div>
               </div>
+              {#if currentListIdValue === list.id}
+                <div class="absolute bottom-5 right-2 px-2 py-0.5 bg-white/20 rounded-md text-xs font-semibold">Active</div>
+              {/if}
             {/if}
           </div>
         {/each}
