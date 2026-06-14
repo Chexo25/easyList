@@ -82,7 +82,14 @@ async function loadLists(userId: string) {
     .select('lists (id, name, share_code)')
     .eq('user_id', userId);
 
-  if (!error && data) {
+  if (error) {
+    console.error('Error loading lists:', error);
+    syncError.set('Impossible de charger vos listes.');
+    isListsLoaded.set(true);
+    return;
+  }
+
+  if (data) {
     const userLists: ShoppingList[] = data
       .map((d: Record<string, unknown>) => {
         const l = d.lists as Record<string, unknown>;
@@ -96,6 +103,7 @@ async function loadLists(userId: string) {
       selectList(userLists[0].id);
     }
   }
+
   isListsLoaded.set(true);
 }
 

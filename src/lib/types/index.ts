@@ -18,6 +18,8 @@ export interface MealIngredient {
   unit: string;
 }
 
+export type MealType = 'Entrée' | 'Plat' | 'Plat à emporter' | 'Dessert' | 'Goûter' | null;
+
 export interface Meal {
   id: string;
   listId: string | null;
@@ -25,7 +27,7 @@ export interface Meal {
   ingredients: MealIngredient[];
   createdAt: string;
   isFavorite: boolean;
-  type: string | null;
+  type: MealType;
 }
 
 export interface PlannedDay {

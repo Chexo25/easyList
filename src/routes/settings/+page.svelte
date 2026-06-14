@@ -5,74 +5,71 @@
   import { Moon, Sun } from 'lucide-svelte';
   import { items } from '$lib/store/shopping';
   import { categoryOrder } from '$lib/store/categoryOrder';
-  import { Button } from '$lib/components/ui/button';
-  import { ArrowUp, ArrowDown } from 'lucide-svelte';
+  import { get } from 'svelte/store';
+  import type { Theme } from '$lib/store/theme';
 
-  const themes = [
+  const themes: { id: Theme; label: string; color: string }[] = [
     { id: 'default', label: 'Défaut', color: 'bg-gray-300' },
-    { id: 'ocean', label: 'Océan', color: 'bg-blue-500' },
+    { id: 'ocean', label: 'Schtroumpf', color: 'bg-blue-500' },
     { id: 'forest', label: 'Cornichon', color: 'bg-green-500' },
     { id: 'sunset', label: 'Sunset', color: 'bg-orange-400' },
-    { id: 'rose', label: 'Rose', color: 'bg-red-400' },
-    { id: 'violet', label: 'Lila', color: 'bg-purple-500' }
+    { id: 'rose', label: 'Cerise', color: 'bg-red-400' },
+    { id: 'violet', label: 'Lavande', color: 'bg-purple-500' },
   ];
 
-  type ThemeId = typeof themes[number]['id'];
-  let themeId: ThemeId;
-
   let usedCategories = $derived(
-    Array.from(
-      new Set(
-        $items
-          .map(i => i.category)
-          .filter(Boolean)
-      )
-    ).sort()
+    Array.from(new Set(($items || []).map(i => i.category).filter(Boolean))).sort()
   );
 
-  function moveUp(index: number) {
-  categoryOrder.update(order => {
-    if (index === 0) return order;
+  let dragFromIndex: number | null = null;
+  let dragToIndex: number | null = null;
 
-    const copy = [...order];
-
-    [copy[index - 1], copy[index]] =
-      [copy[index], copy[index - 1]];
-
-    return copy;
-  });
+  function handleDragStart(e: DragEvent, index: number) {
+    dragFromIndex = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+    }
   }
 
-function moveDown(index: number) {
-  categoryOrder.update(order => {
-    if (index >= order.length - 1) return order;
+  function handleDragOver(e: DragEvent, index: number) {
+    e.preventDefault();
+    dragToIndex = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+  }
 
-    const copy = [...order];
+  function handleDragEnd() {
+    if (dragFromIndex === null || dragToIndex === null || dragFromIndex === dragToIndex) {
+      dragFromIndex = null;
+      dragToIndex = null;
+      return;
+    }
 
-    [copy[index + 1], copy[index]] =
-      [copy[index], copy[index + 1]];
+    categoryOrder.update(order => {
+      const copy = [...order];
+      const [moved] = copy.splice(dragFromIndex!, 1);
+      copy.splice(dragToIndex!, 0, moved);
+      return copy;
+    });
 
-    return copy;
-  });
+    dragFromIndex = null;
+    dragToIndex = null;
+  }
+
+  function removeCategory(index: number) {
+    categoryOrder.update(order => order.filter((_, i) => i !== index));
   }
 
   $effect(() => {
-    const currentOrder = $categoryOrder;
-
-    const missing = usedCategories.filter(
-      c => !currentOrder.includes(c)
-    );
-
+    const missing = usedCategories.filter(c => !$categoryOrder.includes(c));
     if (missing.length > 0) {
-      categoryOrder.set([
-        ...currentOrder,
-        ...missing
-      ]);
+      categoryOrder.set([...get(categoryOrder), ...missing]);
     }
-  }); 
+  });
 </script>
 
-<div class="p-4 space-y-6">
+<div class="h-full overflow-y-auto p-4 space-y-6 pb-8">
 
   <!-- DARK MODE SWITCH -->
   <div class="flex items-center justify-between border rounded-xl p-4">
@@ -134,37 +131,39 @@ function moveDown(index: number) {
 
   <!-- RAYONS ORDER -->
   <div class="space-y-3">
+    <p class="text-sm font-semibold text-muted-foreground">Ordre des rayons</p>
+    <p class="text-xs text-muted-foreground">Maintenez et glissez pour réordonner. Appuyez sur la croix pour retirer un rayon de la liste.</p>
 
-  <p class="text-sm font-semibold text-muted-foreground">
-    Ordre des rayons
-  </p>
-
-  <div class="border rounded-xl divide-y">
-
-    {#each $categoryOrder as category, index}
-
-      <div class="flex items-center justify-between p-3">
-
-        <span>{category}</span>
-
-        <div class="flex gap-2">
-
-          <Button variant="outline" size="icon" onclick={() => moveUp(index)}>
-            <ArrowUp class="w-4 h-4" />
-          </Button>
-
-          <Button variant="outline" size="icon" onclick={() => moveDown(index)}>
-            <ArrowDown class="w-4 h-4" />
-          </Button>
-
+    <div class="border rounded-xl divide-y overflow-hidden" role="list">
+      {#if $categoryOrder.length === 0}
+        <div class="p-4 text-sm text-muted-foreground text-center">
+          Aucun rayon pour l'instant. Ajoutez des articles à votre liste pour les voir apparaître ici.
         </div>
-
-      </div>
-
-    {/each}
-
-  </div>
-
+      {/if}
+      {#each $categoryOrder as category, index}
+      <div
+        class="flex items-center justify-between p-3 bg-card hover:bg-muted/30 transition-colors cursor-grab active:cursor-grabbing active:bg-muted/50 active:opacity-70"
+        draggable="true"
+        role="listitem"
+        ondragstart={(e) => handleDragStart(e, index)}
+        ondragover={(e) => handleDragOver(e, index)}
+        ondragend={handleDragEnd}
+      >
+          <div class="flex items-center gap-3">
+            <span class="text-muted-foreground/50 select-none">⠿</span>
+            <span class="text-sm font-medium">{category}</span>
+          </div>
+          <button
+            type="button"
+            class="text-muted-foreground/50 hover:text-destructive transition-colors p-1 rounded-full hover:bg-destructive/10"
+            onclick={() => removeCategory(index)}
+            title="Retirer ce rayon"
+          >
+            ✕
+          </button>
+        </div>
+      {/each}
+    </div>
   </div>
 
 </div>

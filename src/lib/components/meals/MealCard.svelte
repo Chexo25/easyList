@@ -9,14 +9,15 @@
   import { Trash2, Plus, ShoppingCart, ChevronDown, ChevronUp, Check, Star, Pencil } from 'lucide-svelte';
   import { categories as defaultCategories } from '$lib/data/categories';
   import { searchLocalProducts, type Product } from '$lib/data/products';
+  import type { MealType } from '$lib/types';
+
+  const typeOptions: Exclude<MealType, null>[] = ['Entrée', 'Plat', 'Plat à emporter', 'Dessert', 'Goûter'];
 
   let { meal, onDelete, onAddToCart } = $props<{
     meal: Meal;
     onDelete: (id: string) => void;
     onAddToCart: (meal: Meal) => void;
   }>();
-
-  const typeOptions = ['Entrée', 'Plat', 'Plat à emporter', 'Dessert', 'Goûter'];
 
   let addName = $state('');
   let addCategory = $state('');

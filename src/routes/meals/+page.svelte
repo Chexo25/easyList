@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { syncMeals, addMealToSync, deleteMealFromSync, saveItems, currentListId, items as syncItems, addItem } from '$lib/store/shopping';  import { get } from 'svelte/store';
+  import { syncMeals, addMealToSync, deleteMealFromSync, saveItems, currentListId, items as syncItems } from '$lib/store/shopping';  import { get } from 'svelte/store';
   import { toast } from 'svelte-sonner';
-  import type { Meal, Item } from '$lib/types';
+  import type { Meal } from '$lib/types';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Plus } from 'lucide-svelte';
   import MealCard from '$lib/components/meals/MealCard.svelte';
   import { mergeOrCreateItem } from '$lib/utils/mergeItems';
-
+  import type { MealType } from '$lib/types';
 
   let meals = $derived(
     Array.from(new Map(($syncMeals || []).map(m => [m.id, m])).values())
@@ -18,12 +18,11 @@
       }))
   );
 
+  const typeOptions = ['Tous', 'Entrée', 'Plat', 'Plat à emporter', 'Dessert', 'Goûter'] as const;
+  
   let newMealName = $state('');
-
   let filterFavoriteOnly = $state(false);
-  let filterType = $state('Tous');
-  const typeOptions = ['Tous', 'Entrée', 'Plat', 'Plat à emporter', 'Dessert', 'Goûter'];
-
+  let filterType: typeof typeOptions[number] = $state('Tous');
   let displayedMeals = $derived(
     meals.filter(m => {
       if (filterFavoriteOnly && !m.isFavorite) return false;
@@ -50,10 +49,11 @@
       ingredients: [],
       createdAt: new Date().toISOString(),
       isFavorite: false,
-      type: 'default'
+      type: null as MealType
     };
 
     await addMealToSync(newMeal);
+    newMealName = '';
   }
 
   async function deleteMeal(id: string) {
@@ -65,19 +65,7 @@
     let current = [...($syncItems || [])];
 
     for (const ming of meal.ingredients) {
-      const { updatedItems, newItem } = mergeOrCreateItem(
-        current,
-        ming.name,
-        ming.category,
-        ming.quantity || 1,
-        ming.unit || '',
-        meal.name
-      );
-      current = updatedItems;
-      if (newItem) {
-        newItem.listId = $currentListId;
-        await addItem(newItem);
-      }
+      current = mergeOrCreateItem(current, ming.name, ming.category, ming.quantity || 1, ming.unit || '', meal.name, $currentListId);
     }
 
     await saveItems(current);

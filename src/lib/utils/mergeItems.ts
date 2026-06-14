@@ -6,16 +6,17 @@ export function mergeOrCreateItem(
   category: string,
   quantity: number,
   unit: string,
-  linkedMeal?: string
-): { updatedItems: Item[]; newItem?: Item } {
+  linkedMeal?: string,
+  listId?: string | null
+): Item[] {
   const activeIndex = current.findIndex(
     i => i.name.toLowerCase() === name.toLowerCase() && !i.isBought
   );
 
   if (activeIndex !== -1) {
     const existing = current[activeIndex];
-    const updatedItems = [...current];
-    updatedItems[activeIndex] = {
+    const updated = [...current];
+    updated[activeIndex] = {
       ...existing,
       quantity: (existing.quantity || 0) + quantity,
       category,
@@ -24,7 +25,7 @@ export function mergeOrCreateItem(
         ? [...existing.linkedMeals, linkedMeal]
         : existing.linkedMeals,
     };
-    return { updatedItems };
+    return updated;
   }
 
   const boughtIndex = current.findIndex(
@@ -32,21 +33,21 @@ export function mergeOrCreateItem(
   );
 
   if (boughtIndex !== -1) {
-    const updatedItems = [...current];
-    updatedItems[boughtIndex] = {
-      ...updatedItems[boughtIndex],
+    const updated = [...current];
+    updated[boughtIndex] = {
+      ...updated[boughtIndex],
       isBought: false,
       quantity,
       category,
       unit,
       linkedMeals: linkedMeal ? [linkedMeal] : [],
     };
-    return { updatedItems };
+    return updated;
   }
 
-  const newItem: Item = {
+  return [...current, {
     id: crypto.randomUUID(),
-    listId: null,
+    listId: listId ?? null,
     name,
     category,
     isBought: false,
@@ -54,7 +55,5 @@ export function mergeOrCreateItem(
     quantity,
     unit,
     linkedMeals: linkedMeal ? [linkedMeal] : [],
-  };
-
-  return { updatedItems: [...current, newItem], newItem };
+  }];
 }

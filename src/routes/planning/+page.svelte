@@ -1,10 +1,10 @@
   <script lang="ts">
     import { ShoppingCart, ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays, Utensils } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
+    import { Tabs, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
     import * as Dialog from '$lib/components/ui/dialog';
-    import { syncMeals, syncPlanning, updatePlannedDayInSync, saveItems, items as syncItems, addItem, currentListId } from '$lib/store/shopping';    import { toast } from 'svelte-sonner';
-    import type { Meal, PlannedDay, Planning, Item } from '$lib/types';
+    import { syncMeals, syncPlanning, updatePlannedDayInSync, saveItems, items as syncItems, currentListId } from '$lib/store/shopping';    import { toast } from 'svelte-sonner';
+    import type { Meal, PlannedDay, Planning } from '$lib/types';
     import { mergeOrCreateItem } from '$lib/utils/mergeItems';
 
     let meals = $derived(
@@ -28,9 +28,16 @@
       ) as Planning
     );
 
-    let activeDate = $state(new Date());
     let activeTab = $state('day');
 
+    function today() {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    let activeDate = $state(today());
+    
     function getStartOfWeek(d: Date) {
       const date = new Date(d);
       date.setHours(0, 0, 0, 0);
@@ -49,7 +56,12 @@
       });
     });
 
-    function formatDate(d: Date) { return d.toISOString().split('T')[0]; }
+    function formatDate(d: Date) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
     function getDayName(d: Date) { return d.toLocaleDateString('fr-FR', { weekday: 'long' }); }
     function getShortDayName(d: Date) { return d.toLocaleDateString('fr-FR', { weekday: 'short' }); }
     function getMonthName(d: Date) { return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); }
@@ -130,20 +142,7 @@
       for (const exp of toExport.filter(e => e.selected)) {
         for (const ming of exp.meal.ingredients) {
           if (exp.excluded.includes(ming.name)) continue;
-
-          const { updatedItems, newItem } = mergeOrCreateItem(
-            current,
-            ming.name,
-            ming.category,
-            ming.quantity || 1,
-            ming.unit || '',
-            exp.meal.name
-          );
-          current = updatedItems;
-          if (newItem) {
-            newItem.listId = $currentListId;
-            await addItem(newItem);
-          }
+          current = mergeOrCreateItem(current, ming.name, ming.category, ming.quantity || 1, ming.unit || '', exp.meal.name, $currentListId);
         }
       }
 
@@ -173,7 +172,7 @@
           <span class="text-xs text-muted-foreground">Semaine du</span>
           {getMonthName(weekDays[0])} - {getMonthName(weekDays[6])}
         </span>
-        <Button variant="outline" size="icon" class="h-8 w-8" onclick={() => { const d = new Date(activeDate); d.setDate(d.getDate() - 7); activeDate = d; }}>
+        <Button variant="outline" size="icon" class="h-8 w-8" onclick={() => { const d = new Date(activeDate); d.setDate(d.getDate() + 7); activeDate = d; }}>
           <ChevronRight class="w-4 h-4" />
         </Button>
       </div>

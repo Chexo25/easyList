@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { items as syncItems, syncMeals, lists, currentListId, saveItems, updateItem, deleteItem, addItem, isListsLoaded, isNetworkOffline } from '$lib/store/shopping';
+  import { items as syncItems, syncMeals, lists, currentListId, saveItems, updateItem, deleteItem, isListsLoaded, isNetworkOffline } from '$lib/store/shopping';
   import { toast } from 'svelte-sonner';
+  import { APP_NAME } from '$lib/config';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Label } from '$lib/components/ui/label';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input'; 
-  import { Badge } from '$lib/components/ui/badge';
   import * as Dialog from '$lib/components/ui/dialog';
   import { ArrowUp, Trash2, Plus, Utensils, Check, Pencil } from 'lucide-svelte';
   import { categories as defaultCategories } from '$lib/data/categories';
@@ -137,16 +137,7 @@
     let current = [...items];
 
     for (const ming of meal.ingredients) {
-      const { updatedItems, newItem } = mergeOrCreateItem(
-        current,
-        ming.name,
-        ming.category,
-        ming.quantity || 1,
-        ming.unit || '',
-        meal.name
-      );
-      current = updatedItems;
-      if (newItem) await addItem(newItem);
+      current = mergeOrCreateItem(current, ming.name, ming.category, ming.quantity || 1, ming.unit || '', meal.name, $currentListId);
     }
 
     await saveItems(current);
@@ -164,13 +155,8 @@
     const quantity = addQty || 1;
     const unit = addUnit.trim();
 
-    const { updatedItems, newItem } = mergeOrCreateItem(items, name, category, quantity, unit);
-
-    if (newItem) {
-      await addItem(newItem);
-    } else {
-      await saveItems(updatedItems);
-    }
+    const updatedItems = mergeOrCreateItem(items, name, category, quantity, unit, undefined, $currentListId);
+    await saveItems(updatedItems);
 
     addName = '';
     addCategory = '';
@@ -236,7 +222,7 @@ let boughtItems = $derived(
   <header class="sticky top-0 z-20 bg-background/95 backdrop-blur border-b shadow-sm pb-4">
     <div class="px-4 py-4">
       <h1 class="text-xl font-bold tracking-tight text-center">
-        EasyList : {currentListName || (listsLoaded ? 'Créez votre liste' : 'Chargement...')}
+        {APP_NAME} : {currentListName || (listsLoaded ? 'Créez votre liste' : 'Chargement...')}
       </h1>
       {#if currentListName}
         {#if isOffline}
